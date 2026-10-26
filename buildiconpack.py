@@ -99,7 +99,7 @@ def main():
         f.write("\n")
 
     print("版本     %s" % version)
-    print("卸载后   %.1f MB → 压缩 %.1f MB（%.0f%%，耗时 %.0fs）"
+    print("未压缩   %.1f MB → 压缩 %.1f MB（%.0f%%，耗时 %.0fs）"
           % (rawSize / 1048576, gzSize / 1048576, gzSize / rawSize * 100, time.time() - t))
     print("内容     %d 行 / %d 键 / %d 流体" % (rows, keys, fluids))
     print("sha256   %s" % digest)

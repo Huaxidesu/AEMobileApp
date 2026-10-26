@@ -29,7 +29,7 @@ DB_BASE = os.path.join(BASE, "assets", "itempanel.db")
 
 
 def parseArgs(argv):
-    opts = {"force": False, "merge": False, "src": BASE}
+    opts = {"force": False, "merge": False, "src": BASE, "db_out": None, "base": None}
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -37,13 +37,14 @@ def parseArgs(argv):
             opts["force"] = True
         elif a == "--merge":
             opts["merge"] = True
-        elif a == "--src":
+        elif a in ("--src", "--db-out", "--base"):
             i += 1
             if i >= len(argv):
-                abort("--src 缺少路径参数", '例：--src "D:/.../.minecraft/dumps"')
-            opts["src"] = os.path.abspath(argv[i])
+                abort("%s 缺少路径参数" % a, '例：%s "D:/.../dumps"' % a)
+            key = {"--src": "src", "--db-out": "db_out", "--base": "base"}[a]
+            opts[key] = os.path.abspath(argv[i])
         else:
-            abort("未知参数 %s" % a, "支持 --src <dir> / --merge / --force")
+            abort("未知参数 %s" % a, "支持 --src <dir> / --db-out <file> / --base <file> / --merge / --force")
         i += 1
     return opts
 
@@ -170,6 +171,9 @@ def loadFluids(fluidCsv):
 
 def main():
     opts = parseArgs(sys.argv)
+    dbOut = opts["db_out"] or DB_OUT
+    baseDb = opts["base"] or DB_BASE
+    os.makedirs(os.path.dirname(dbOut) or ".", exist_ok=True)
     src = opts["src"]
     itemCsv = os.path.join(src, "itempanel.csv")
     iconDir = os.path.join(src, "itempanel_icons")
@@ -210,17 +214,17 @@ def main():
             "多半是图标没导全/分辨率不匹配；确认无误可加 --force",
         )
 
-    if os.path.exists(DB_OUT):
-        os.remove(DB_OUT)
+    if os.path.exists(dbOut):
+        os.remove(dbOut)
 
     if opts["merge"]:
         # ---- 合并模式：以现有 assets/itempanel.db 为底，按 (item_name, item_meta) 覆盖/新增 ----
         # 逐行 UPDATE 带 100KB 图标会反复重写索引，慢到分钟级；这里改成整表重建：
         # 旧表里“新数据没覆盖到的行” + 新数据行 → 新表 → 换名重建索引。
-        if not os.path.isfile(DB_BASE):
-            abort("--merge 需要底库 %s" % DB_BASE, "先 checkout 现有 assets/itempanel.db，或改用重建模式")
-        shutil.copyfile(DB_BASE, DB_OUT)
-        db = sqlite3.connect(DB_OUT)
+        if not os.path.isfile(baseDb):
+            abort("--merge 需要底库 %s" % baseDb, "先 checkout 现有 assets/itempanel.db，或改用重建模式")
+        shutil.copyfile(baseDb, dbOut)
+        db = sqlite3.connect(dbOut)
         cur = db.cursor()
         createSchema(cur)
         before = cur.execute("select count(*) from item_panel").fetchone()[0]
@@ -288,7 +292,7 @@ def main():
         print("item_panel: %d → %d 行；fluid_container: %d 行（%s）" % (before, after, fluids, fluidNote))
     else:
         # ---- 重建模式：全新数据库 ----
-        db = sqlite3.connect(DB_OUT)
+        db = sqlite3.connect(dbOut)
         cur = db.cursor()
         createSchema(cur)
         cur.executemany("insert into item_panel values(:id, :item_name, :item_id, :item_meta, :has_nbt, :dname, :icon)", rows)
@@ -303,7 +307,7 @@ def main():
 
     db.close()
     print("完成 → %s（%.1f MB），确认无误后覆盖到 assets/itempanel.db"
-          % (DB_OUT, os.path.getsize(DB_OUT) / 1048576))
+          % (dbOut, os.path.getsize(dbOut) / 1048576))
 
 
 main()
