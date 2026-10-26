@@ -9,7 +9,7 @@ import { colors, spacing, card } from '../theme';
 import { GhostButton, PrimaryButton, SettingsGroup } from '../components';
 import { showToast } from '../toast';
 
-const ORDER: CacheCategory[] = ['items', 'cpus', 'details', 'mspt', 'networks'];
+const ORDER: CacheCategory[] = ['items', 'cpus', 'details', 'mspt', 'networks', 'servers'];
 
 export default function CacheScreen() {
   const [summary, setSummary] = useState<CacheSummary | null>(null);

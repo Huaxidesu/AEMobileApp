@@ -3,6 +3,7 @@
 import * as FileSystem from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { openDatabaseAsync } from 'expo-sqlite';
+import { isValidHttpUrl, normalizeRepoUrl } from './urlutil';
 
 /** 随 APK 分发的内置库（assets/itempanel.db，首次启动由 SQLiteProvider 复制进来） */
 export const BUILTIN_DB = 'itempanel.db';
@@ -31,15 +32,11 @@ const KEY_URL = 'icons.manifest_url';
  * 目录地址补上 `version.json`，已经是 .json 的原样使用。
  */
 export function normalizeManifestUrl(input: string): string {
-  let url = input.trim().replace(/\/+$/, '');
-  if (!url) return DEFAULT_MANIFEST_URL;
-  url = url.replace('/src/branch/', '/raw/branch/');
-  if (!/\.json$/i.test(url)) url = `${url}/version.json`;
-  return url;
+  return normalizeRepoUrl(input, 'version.json') || DEFAULT_MANIFEST_URL;
 }
 
 export function isValidManifestUrl(url: string): boolean {
-  return /^https?:\/\/\S+$/i.test(url.trim());
+  return isValidHttpUrl(url);
 }
 
 export interface IconPackInfo {

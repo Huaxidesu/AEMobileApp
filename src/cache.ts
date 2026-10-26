@@ -9,7 +9,7 @@ const CACHE_DIR = `${FileSystem.documentDirectory}cache/`;
 const CACHE_VERSION = 1;
 
 /** 缓存分类，用于设置页的分类占用统计 */
-export type CacheCategory = 'items' | 'cpus' | 'details' | 'mspt' | 'networks';
+export type CacheCategory = 'items' | 'cpus' | 'details' | 'mspt' | 'networks' | 'servers';
 
 export const CACHE_CATEGORY_LABEL: Record<CacheCategory, string> = {
   items: '物品列表',
@@ -17,6 +17,7 @@ export const CACHE_CATEGORY_LABEL: Record<CacheCategory, string> = {
   details: '合成明细',
   mspt: '服务器监控',
   networks: '网络列表',
+  servers: '服务器列表',
 };
 
 export interface CacheEntry<T> {
@@ -149,7 +150,7 @@ export async function summarizeCache(): Promise<CacheSummary> {
   const summary: CacheSummary = {
     total: 0,
     count: 0,
-    byCategory: { items: { ...empty }, cpus: { ...empty }, details: { ...empty }, mspt: { ...empty }, networks: { ...empty }, other: { ...empty } },
+    byCategory: { items: { ...empty }, cpus: { ...empty }, details: { ...empty }, mspt: { ...empty }, networks: { ...empty }, servers: { ...empty }, other: { ...empty } },
   };
   for (const s of await listCache()) {
     summary.total += s.bytes;

@@ -1,5 +1,5 @@
-// 根导航：未配置 → 设置页；已配置 → 四 Tab 主界面
-import React from 'react';
+// 根导航：未配置 → 连接表单；已配置 → 四 Tab 主界面 + 设置子页
+import React, { useRef } from 'react';
 import { Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -14,6 +14,7 @@ import CraftScreen from './screens/CraftScreen';
 import MonitorScreen from './screens/MonitorScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ServerSettingsScreen from './screens/ServerSettingsScreen';
+import ServerListScreen from './screens/ServerListScreen';
 import IconPackScreen from './screens/IconPackScreen';
 import CacheScreen from './screens/CacheScreen';
 import AboutScreen from './screens/AboutScreen';
@@ -86,11 +87,14 @@ const TAB_LABELS: Record<string, string> = {
 
 export default function RootNavigator() {
   const { ready, complete } = useConfig();
+  // 一旦进过主界面就锁住：切换到一个还没配好的账号时不能让整棵树塌回首次配置页
+  const enteredRef = useRef(false);
+  if (complete) enteredRef.current = true;
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   return (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {complete ? (
+        {enteredRef.current ? (
           <Stack.Screen name="Main" component={MainTabs} />
         ) : (
           // 未配置时直接把连接表单当根页：填完保存后整棵树切到主界面
@@ -98,7 +102,8 @@ export default function RootNavigator() {
         )}
         <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ presentation: 'modal', ...subHeader('物品详情') }} />
         <Stack.Screen name="PlanReview" component={PlanReviewScreen} options={subHeader('合成计划')} />
-        <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={subHeader('服务器连接')} />
+        <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={subHeader('服务器与账号')} />
+        <Stack.Screen name="ServerList" component={ServerListScreen} options={subHeader('服务器列表')} />
         <Stack.Screen name="IconPack" component={IconPackScreen} options={subHeader('图标库')} />
         <Stack.Screen name="CacheDetail" component={CacheScreen} options={subHeader('存储与缓存')} />
         <Stack.Screen name="About" component={AboutScreen} options={subHeader('关于')} />

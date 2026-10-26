@@ -1,6 +1,4 @@
-// 服务端配置与接口层。SecureStore key 与旧版保持一致，老用户升级不丢配置。
-import * as SecureStore from 'expo-secure-store';
-
+// 服务端接口层：协议类型 + 请求封装。配置的持久化在多账号模块（accounts.ts）里。
 export interface AENetwork {
   dimid: number;
   x: number;
@@ -23,32 +21,6 @@ export interface ApiResponse<T> {
 }
 
 export const DEFAULT_PORT = '44444';
-
-export async function loadConfig(): Promise<ServerConfig> {
-  let mainnet: AENetwork | null = null;
-  try {
-    mainnet = JSON.parse(SecureStore.getItem('user.ae_main_net') ?? 'null');
-  } catch {
-    mainnet = null;
-  }
-  return {
-    scheme: SecureStore.getItem('server.scheme') ?? 'http',
-    ip: SecureStore.getItem('server.ip') ?? '',
-    port: SecureStore.getItem('server.port') ?? DEFAULT_PORT,
-    uuid: SecureStore.getItem('user.uuid') ?? '',
-    mainnet,
-  };
-}
-
-export async function saveConfig(cfg: ServerConfig): Promise<void> {
-  SecureStore.setItem('server.scheme', cfg.scheme);
-  SecureStore.setItem('server.ip', cfg.ip);
-  SecureStore.setItem('server.port', cfg.port);
-  SecureStore.setItem('user.uuid', cfg.uuid);
-  if (cfg.mainnet) {
-    SecureStore.setItem('user.ae_main_net', JSON.stringify(cfg.mainnet));
-  }
-}
 
 export function isConfigComplete(cfg: ServerConfig): boolean {
   return !!(cfg.ip && cfg.scheme && cfg.uuid && cfg.mainnet && cfg.mainnet.x != null);

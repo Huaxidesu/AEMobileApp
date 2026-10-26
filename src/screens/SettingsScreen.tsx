@@ -6,18 +6,21 @@ import { useConfig } from '../config';
 import { baseUrl } from '../api';
 import { formatBytes, summarizeCache } from '../cache';
 import { getInstalledInfo, getOnlinePackBytes } from '../iconpack';
+import { BUILTIN_SERVERS, getServerListUrl, loadCachedServerList } from '../serverlist';
+import { shortUrlLabel } from '../urlutil';
 import { APP_VERSION } from '../appinfo';
 import { colors, spacing } from '../theme';
 import { SettingsGroup, SettingsRow, StatusDot } from '../components';
 
 export default function SettingsScreen({ navigation }: any) {
-  const { config, complete } = useConfig();
+  const { config, complete, accountName } = useConfig();
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [cacheCount, setCacheCount] = useState(0);
   const [iconVersion, setIconVersion] = useState<string | null>(getInstalledInfo().version);
   const [packBytes, setPackBytes] = useState<number | null>(null);
+  const [onlineLines, setOnlineLines] = useState(0);
 
-  // 从子页返回时刷新占用：清理缓存、装完图标库都会变
+  // 从子页返回时刷新：清理缓存、装完图标库、改了在线列表都会变
   useFocusEffect(
     useCallback(() => {
       let alive = true;
@@ -27,6 +30,7 @@ export default function SettingsScreen({ navigation }: any) {
         setCacheCount(s.count);
       });
       getOnlinePackBytes().then((b) => alive && setPackBytes(b));
+      loadCachedServerList().then((hit) => alive && setOnlineLines(hit ? hit.entries.length : 0));
       setIconVersion(getInstalledInfo().version);
       return () => {
         alive = false;
@@ -43,17 +47,24 @@ export default function SettingsScreen({ navigation }: any) {
         <Text style={styles.title}>设置</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
           <StatusDot ok={complete} />
-          <Text style={styles.subtitle}>{complete ? baseUrl(config) : '未配置服务器'}</Text>
+          <Text style={styles.subtitle}>{complete ? `${accountName} · ${baseUrl(config)}` : '未配置服务器'}</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
-        <SettingsGroup title="连接" footnote="服务器地址、访问密码与主网都在同一个页面里配置">
+        <SettingsGroup title="连接" footnote="多账号：每个账号保存一套地址、密码与主网，切换即换服务器">
+          <SettingsRow
+            icon="person-circle"
+            label="账号与主网"
+            detail={complete ? `${accountName}\n${baseUrl(config)} · ${mainnetText}` : '填写地址与密码后获取网络列表'}
+            onPress={() => navigation.navigate('ServerSettings')}
+          />
           <SettingsRow
             icon="server"
-            label="服务器与主网"
-            detail={complete ? `${baseUrl(config)}\n${mainnetText}` : '填写地址与密码后获取网络列表'}
-            onPress={() => navigation.navigate('ServerSettings')}
+            label="服务器列表"
+            value={`内置 ${BUILTIN_SERVERS.length} · 在线 ${onlineLines}`}
+            detail={shortUrlLabel(getServerListUrl())}
+            onPress={() => navigation.navigate('ServerList')}
             divider={false}
           />
         </SettingsGroup>
