@@ -1,0 +1,234 @@
+// 服务器连接配置：协议 / 地址 / 端口 / 密码 / 主网选择 / 测试连接 / 保存
+import React, { useEffect, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useConfig } from '../config';
+import { AENetwork, baseUrl, getJson, saveConfig, testConnection } from '../api';
+import { readCache, serverKey, writeCache } from '../cache';
+import { colors, radius, spacing, card } from '../theme';
+import { FieldLabel, GhostButton, PrimaryButton, Segmented, SettingsGroup, StatusDot, StyledInput } from '../components';
+import { showToast } from '../toast';
+
+export default function ServerSettingsScreen({ navigation }: any) {
+  const { config, reload, complete } = useConfig();
+  const [scheme, setScheme] = useState(config.scheme);
+  const [ip, setIp] = useState(config.ip);
+  const [port, setPort] = useState(config.port);
+  const [uuid, setUuid] = useState(config.uuid);
+  const [mainnet, setMainnet] = useState<AENetwork | null>(config.mainnet);
+  const [networks, setNetworks] = useState<AENetwork[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // 网络列表与主网选择无关，按服务器指纹单独缓存
+  const netKey = `networks:${serverKey({ scheme, ip, port, uuid, mainnet: null })}`;
+
+  useEffect(() => {
+    setScheme(config.scheme);
+    setIp(config.ip);
+    setPort(config.port);
+    setUuid(config.uuid);
+    setMainnet(config.mainnet);
+  }, []);
+
+  /** 先用缓存填列表：离线/服务器没开时也能确认之前选的是哪个网络 */
+  async function openPickerWith(list: AENetwork[]) {
+    setNetworks(list);
+    setPickerOpen(true);
+  }
+
+  async function fetchNetworks() {
+    if (!ip || !uuid) {
+      showToast('请先填写服务器地址和密码', 'bad');
+      return;
+    }
+    try {
+      const resp = await getJson<AENetwork[]>({ scheme, ip, port, uuid, mainnet }, '/AE2/getNetworks', { ownerUUID: uuid });
+      if (!resp.succeed) {
+        showToast(resp.message ?? '获取网络列表失败', 'bad');
+        return;
+      }
+      const list = resp.body ?? [];
+      if (list.length === 0) {
+        showToast('你还没在 ME 控制器旁放置监控器', 'bad');
+        return;
+      }
+      writeCache(netKey, list);
+      openPickerWith(list);
+    } catch {
+      const hit = await readCache<AENetwork[]>(netKey);
+      if (hit && hit.data.length > 0) {
+        openPickerWith(hit.data);
+        showToast('连不上服务器，显示的是缓存的网络列表', 'bad');
+      } else {
+        showToast('无法连接服务器，先试试"测试连接"', 'bad');
+      }
+    }
+  }
+
+  async function runTest() {
+    if (!ip) {
+      showToast('请先填写服务器地址', 'bad');
+      return;
+    }
+    setTesting(true);
+    const okScheme = await testConnection(ip, port);
+    setTesting(false);
+    if (okScheme) {
+      setScheme(okScheme);
+      setTested(okScheme);
+      showToast(`${okScheme.toUpperCase()} 连接成功`, 'ok');
+    } else {
+      setTested(null);
+      showToast('连接失败，请检查地址、端口和防火墙', 'bad');
+    }
+  }
+
+  async function save() {
+    if (!ip || !uuid) {
+      showToast('服务器地址和密码不能为空', 'bad');
+      return;
+    }
+    if (!mainnet) {
+      showToast('请先获取并选择主网', 'bad');
+      return;
+    }
+    setSaving(true);
+    await saveConfig({ scheme, ip, port, uuid, mainnet });
+    await reload();
+    setSaving(false);
+    showToast('设置已保存', 'ok');
+    if (navigation.canGoBack()) navigation.goBack();
+  }
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
+        {!complete ? (
+          <View style={{ marginBottom: spacing.l }}>
+            <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>连接服务器</Text>
+            <Text style={{ color: colors.textFaint, fontSize: 11, marginTop: 2 }}>首次使用需要先完成这一步</Text>
+          </View>
+        ) : null}
+
+        {!complete ? (
+          <View style={[card, { padding: spacing.l, marginBottom: spacing.l, borderColor: colors.accent }]}>
+            <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 14 }}>首次使用</Text>
+            <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+              在游戏里的 ME 控制器旁放置「AE 监控器」，聊天栏会给出访问密码。填入服务器地址和密码，获取网络并选择主网即可。
+            </Text>
+          </View>
+        ) : null}
+
+        <SettingsGroup title="登录">
+          <View style={{ padding: spacing.m, gap: spacing.m }}>
+            <Segmented
+              options={[
+                { key: 'http', label: 'HTTP' },
+                { key: 'https', label: 'HTTPS' },
+              ]}
+              value={scheme}
+              onChange={setScheme}
+            />
+            <View>
+              <FieldLabel text="服务器地址（不带端口）" />
+              <StyledInput value={ip} onChangeText={setIp} placeholder="例如 192.168.1.10" autoCorrect={false} />
+            </View>
+            <View>
+              <FieldLabel text="端口（mod 默认 44444）" />
+              <StyledInput value={port} onChangeText={setPort} keyboardType="number-pad" />
+            </View>
+            <View>
+              <FieldLabel text="访问密码（UUID 首段）" />
+              <StyledInput value={uuid} onChangeText={setUuid} placeholder="放置监控器后从聊天栏获取" secure />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
+              <View style={{ flex: 1 }}>
+                <GhostButton label={testing ? '测试中…' : '测试连接'} icon="pulse" onPress={runTest} disabled={testing} />
+              </View>
+              {tested ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <StatusDot ok />
+                  <Text style={{ color: colors.ok, fontSize: 12 }}>{tested.toUpperCase()} 就绪</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </SettingsGroup>
+
+        <SettingsGroup title="主网" footnote="监控器方块所在的 ME 网络，一般只有一个">
+          <View style={{ padding: spacing.m, gap: spacing.m }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+              <Ionicons name="git-network" size={18} color={colors.accent2} />
+              {mainnet && mainnet.x != null ? (
+                <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
+                  DIM {mainnet.dimid} · ({mainnet.x}, {mainnet.y}, {mainnet.z})
+                </Text>
+              ) : (
+                <Text style={{ color: colors.textFaint, fontSize: 14, flex: 1 }}>未选择</Text>
+              )}
+            </View>
+            <GhostButton label="获取网络列表并选择" icon="download" onPress={fetchNetworks} />
+            <Text style={{ color: colors.textFaint, fontSize: 11 }}>
+              当前连接：{baseUrl({ scheme, ip, port, uuid, mainnet }) || '未配置'}
+            </Text>
+          </View>
+        </SettingsGroup>
+
+        <PrimaryButton label={saving ? '保存中…' : '保存设置'} icon="checkmark" onPress={save} loading={saving} />
+      </ScrollView>
+
+      {/* 主网选择弹层 */}
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <TouchableOpacity style={styles.mask} activeOpacity={1} onPress={() => setPickerOpen(false)}>
+          <View style={styles.sheet}>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: spacing.m }}>选择主网（一般只有一个）</Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {networks.map((n, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.netRow, mainnet === n && { borderColor: colors.accent, backgroundColor: colors.accentSoft }]}
+                  onPress={() => {
+                    setMainnet(n);
+                    setPickerOpen(false);
+                  }}
+                >
+                  <Ionicons name="git-network" size={18} color={colors.accent2} />
+                  <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
+                    DIM {n.dimid} · ({n.x}, {n.y}, {n.z})
+                  </Text>
+                  {mainnet === n ? <Ionicons name="checkmark" size={18} color={colors.accent} /> : null}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.bg },
+  mask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.l,
+    borderTopRightRadius: radius.l,
+    padding: spacing.xl,
+    paddingBottom: spacing.xxl,
+  },
+  netRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.m,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.m,
+    padding: spacing.m,
+    marginBottom: spacing.s,
+    backgroundColor: colors.surfaceAlt,
+  },
+});

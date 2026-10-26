@@ -8,12 +8,21 @@ import { LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TitleComponent } from 'echarts/components';
 import { SVGRenderer, SvgChart } from '@wuba/react-native-echarts';
 import { useConfig } from '../config';
+import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { colors, radius, spacing, card } from '../theme';
 import { Chip, StatusDot } from '../components';
 
 echarts.use([SVGRenderer, LineChart, GridComponent, LegendComponent, TitleComponent]);
 
 const MAX_POINTS = 120;
+
+/** 落盘的曲线快照：关掉 App 再打开能看到上次的走势，而不是空图 */
+interface MonitorSnapshot {
+  s5: [string, number][];
+  s30: [string, number][];
+  s300: [string, number][];
+  latest: [number, number, number];
+}
 
 function msptColor(v: number): string {
   if (v < 30) return colors.ok;
@@ -25,12 +34,32 @@ export default function MonitorScreen() {
   const { config } = useConfig();
   const [connected, setConnected] = useState(false);
   const [latest, setLatest] = useState<[number, number, number]>([0, 0, 0]);
+  /** 曲线来自缓存的写入时间；收到实时帧后清空 */
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
   const series5 = useRef<[string, number][]>([]);
   const series30 = useRef<[string, number][]>([]);
   const series300 = useRef<[string, number][]>([]);
   const skiaRef = useRef<any>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  const cacheKey = `mspt:${scopeKey(config)}`;
+
+  // 先铺上次的曲线，实时帧到了再往后接
+  useEffect(() => {
+    let alive = true;
+    readCache<MonitorSnapshot>(cacheKey).then((hit) => {
+      if (!alive || !hit || series5.current.length > 0) return;
+      series5.current = hit.data.s5 ?? [];
+      series30.current = hit.data.s30 ?? [];
+      series300.current = hit.data.s300 ?? [];
+      setLatest(hit.data.latest ?? [0, 0, 0]);
+      setCachedAt(hit.at);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cacheKey]);
 
   const connect = useCallback(() => {
     esRef.current?.close();
@@ -47,9 +76,21 @@ export default function MonitorScreen() {
       for (const s of [series5, series30, series300]) if (s.current.length > MAX_POINTS) s.current.shift();
       setLatest([parts[0], parts[1], parts[2]]);
       setConnected(true);
+      setCachedAt(null);
+      // 1s 一帧，限 30s 一次写盘：缓存只用于下次打开时还原走势
+      writeCache<MonitorSnapshot>(
+        cacheKey,
+        {
+          s5: [...series5.current],
+          s30: [...series30.current],
+          s300: [...series300.current],
+          latest: [parts[0], parts[1], parts[2]],
+        },
+        30000,
+      );
     });
     es.addEventListener('error', () => setConnected(false));
-  }, [config]);
+  }, [config, cacheKey]);
 
   // 只在本页可见时订阅：MSPT 每秒一帧，长期挂着纯浪费流量和电
   useFocusEffect(
@@ -125,7 +166,9 @@ export default function MonitorScreen() {
           <Text style={styles.title}>服务器监控</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <StatusDot ok={connected} />
-            <Text style={styles.subtitle}>{connected ? '实时tick监控中' : '连接中…'}</Text>
+            <Text style={styles.subtitle}>
+              {connected ? '实时tick监控中' : cachedAt ? `缓存曲线 · ${formatAgo(cachedAt)}` : '连接中…'}
+            </Text>
           </View>
         </View>
       </View>

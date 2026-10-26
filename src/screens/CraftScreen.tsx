@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
 import { ApiResponse, CraftingCPUInfo, CraftTaskItem, formatItemCount, openSSE, postForm } from '../api';
 import { resolveItem } from '../db';
+import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { colors, radius, spacing, card } from '../theme';
 import { Chip, EmptyState, ItemIcon, PrimaryButton, StatusDot, ProgressBar, CenterLoading } from '../components';
 import { showToast } from '../toast';
@@ -18,7 +19,26 @@ export default function CraftScreen() {
   const [cpus, setCpus] = useState<CraftingCPUInfo[]>([]);
   const [connected, setConnected] = useState(false);
   const [detailCpu, setDetailCpu] = useState<CraftingCPUInfo | null>(null);
+  /** 当前列表来自缓存的写入时间；收到实时帧后清空 */
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  const liveRef = useRef(false);
+
+  const cacheKey = `cpus:${scopeKey(config)}`;
+
+  // 先读缓存：离线打开也能看到上次的 CPU 列表，联网后由 SSE 覆盖
+  useEffect(() => {
+    let alive = true;
+    liveRef.current = false;
+    readCache<CraftingCPUInfo[]>(cacheKey).then((hit) => {
+      if (!alive || !hit || liveRef.current) return;
+      setCpus(hit.data);
+      setCachedAt(hit.at);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cacheKey]);
 
   const connect = useCallback(() => {
     esRef.current?.close();
@@ -33,8 +53,13 @@ export default function CraftScreen() {
       try {
         const resp: ApiResponse<CraftingCPUInfo[]> = JSON.parse(ev.data);
         if (resp.succeed) {
-          setCpus(resp.body ?? []);
+          const list = resp.body ?? [];
+          liveRef.current = true;
+          setCpus(list);
+          setCachedAt(null);
           setConnected(true);
+          // 5s 一帧，限 20s 一次写盘
+          writeCache(cacheKey, list, 20000);
         } else {
           es.close();
           setConnected(false);
@@ -42,7 +67,7 @@ export default function CraftScreen() {
       } catch {}
     });
     es.addEventListener('error', () => setConnected(false));
-  }, [config]);
+  }, [config, cacheKey]);
 
   // 只在本页可见时连：SSE 每 5s 推一次 CPU 列表，切走就断
   useFocusEffect(
@@ -62,7 +87,13 @@ export default function CraftScreen() {
           <Text style={styles.title}>合成监控</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <StatusDot ok={connected} />
-            <Text style={styles.subtitle}>{connected ? `${cpus.filter((c) => c.item).length} 台 CPU 运行中` : '连接中…'}</Text>
+            <Text style={styles.subtitle}>
+              {connected
+                ? `${cpus.filter((c) => c.item).length} 台 CPU 运行中`
+                : cachedAt
+                ? `离线缓存 · ${formatAgo(cachedAt)}`
+                : '连接中…'}
+            </Text>
           </View>
         </View>
         <TouchableOpacity onPress={connect} style={styles.refresh}>
@@ -130,6 +161,21 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
   const [dead, setDead] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
+  const cacheKey = `details:${scopeKey(config)}#${cpu.idx}`;
+
+  // 先铺上次的明细：连不上时至少能看到任务构成，而不是一直转圈
+  useEffect(() => {
+    let alive = true;
+    setTasks(null);
+    readCache<CraftTaskItem[]>(cacheKey).then((hit) => {
+      if (!alive || !hit) return;
+      setTasks((prev) => prev ?? hit.data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cacheKey]);
+
   useEffect(() => {
     if (!config.mainnet) return;
     const { dimid, x, y, z } = config.mainnet;
@@ -143,8 +189,11 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
       try {
         const resp: ApiResponse<CraftTaskItem[]> = JSON.parse(ev.data);
         if (resp.succeed) {
-          setTasks(resp.body ?? []);
+          const list = resp.body ?? [];
+          setTasks(list);
           setDead(false);
+          // 5s 一帧，限 20s 一次写盘
+          writeCache(cacheKey, list, 20000);
         } else {
           setDead(true);
           es.close();
@@ -153,7 +202,7 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
     });
     es.addEventListener('error', () => setDead(true));
     return () => es.close();
-  }, [cpu.idx]);
+  }, [cpu.idx, cacheKey]);
 
   const sent = useMemo(() => (tasks ?? []).reduce((s, t) => s + t.numberSent, 0), [tasks]);
   const remaining = useMemo(() => (tasks ?? []).reduce((s, t) => s + t.numberRemainingToCraft, 0), [tasks]);

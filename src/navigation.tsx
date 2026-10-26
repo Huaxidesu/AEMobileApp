@@ -13,9 +13,23 @@ import PlanReviewScreen from './screens/PlanReviewScreen';
 import CraftScreen from './screens/CraftScreen';
 import MonitorScreen from './screens/MonitorScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import ServerSettingsScreen from './screens/ServerSettingsScreen';
+import IconPackScreen from './screens/IconPackScreen';
+import CacheScreen from './screens/CacheScreen';
+import AboutScreen from './screens/AboutScreen';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
+
+/** 设置子页共用的原生导航头（暗色） */
+const subHeader = (title: string) => ({
+  headerShown: true,
+  headerTitle: title,
+  headerStyle: { backgroundColor: colors.surface },
+  headerTintColor: colors.text,
+  headerTitleStyle: { color: colors.text, fontSize: 16, fontWeight: '700' as const },
+  headerShadowVisible: false,
+});
 
 const navTheme = {
   ...DefaultTheme,
@@ -77,14 +91,17 @@ export default function RootNavigator() {
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {complete ? (
-          <>
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ presentation: 'modal', headerShown: true, headerTitle: '物品详情', headerStyle: { backgroundColor: colors.surface }, headerTintColor: colors.text }} />
-            <Stack.Screen name="PlanReview" component={PlanReviewScreen} options={{ headerShown: true, headerTitle: '合成计划', headerStyle: { backgroundColor: colors.surface }, headerTintColor: colors.text }} />
-          </>
+          <Stack.Screen name="Main" component={MainTabs} />
         ) : (
-          <Stack.Screen name="Setup" component={SettingsScreen} />
+          // 未配置时直接把连接表单当根页：填完保存后整棵树切到主界面
+          <Stack.Screen name="Setup" component={ServerSettingsScreen} />
         )}
+        <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ presentation: 'modal', ...subHeader('物品详情') }} />
+        <Stack.Screen name="PlanReview" component={PlanReviewScreen} options={subHeader('合成计划')} />
+        <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={subHeader('服务器连接')} />
+        <Stack.Screen name="IconPack" component={IconPackScreen} options={subHeader('图标库')} />
+        <Stack.Screen name="CacheDetail" component={CacheScreen} options={subHeader('存储与缓存')} />
+        <Stack.Screen name="About" component={AboutScreen} options={subHeader('关于')} />
       </Stack.Navigator>
     </NavigationContainer>
   );

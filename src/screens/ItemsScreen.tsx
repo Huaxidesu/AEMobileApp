@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
 import { ApiResponse, ItemStackResp, openSSE, formatItemCount } from '../api';
 import { resolveItem, searchItemKeys, ResolvedItem } from '../db';
+import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { colors, spacing, radius } from '../theme';
 import { Chip, EmptyState, StatusDot, CenterLoading, ItemIcon } from '../components';
 
@@ -32,9 +33,34 @@ export default function ItemsScreen({ navigation }: any) {
   const [filterKeys, setFilterKeys] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** 当前列表来自缓存的写入时间；联网收到新帧后清空 */
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const lastAt = useRef(0);
   const lastKey = useRef('');
+  /** 已经收到过实时帧：迟到的缓存读取不能覆盖它 */
+  const liveRef = useRef(false);
+
+  // 物品列表是最大的一份服务端数据（几千条），按「主网 + 过滤条件」分别落盘
+  const cacheKey = `items:${scopeKey(config)}:${showAll ? 'all' : 'craftable'}`;
+
+  // 先读缓存：冷启动/离线时立刻有内容，联网后由 SSE 覆盖
+  useEffect(() => {
+    let alive = true;
+    liveRef.current = false;
+    setCachedAt(null);
+    setRaw([]);
+    setLoading(true);
+    readCache<ItemStackResp[]>(cacheKey).then((hit) => {
+      if (!alive || !hit || liveRef.current) return;
+      setRaw(hit.data);
+      setCachedAt(hit.at);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cacheKey]);
 
   const connect = useCallback(() => {
     esRef.current?.close();
@@ -57,10 +83,15 @@ export default function ItemsScreen({ navigation }: any) {
           setConnected(false);
           return;
         }
-        setRaw(resp.body ?? []);
+        const list = resp.body ?? [];
+        liveRef.current = true;
+        setRaw(list);
+        setCachedAt(null);
         lastAt.current = Date.now();
         setConnected(true);
         setLoading(false);
+        // 帧间隔 300s，限 10s 一次写盘足以覆盖刷新按钮连点的情况
+        writeCache(cacheKey, list, 10000);
       } catch (e) {
         setError('数据解析失败');
       }
@@ -70,7 +101,7 @@ export default function ItemsScreen({ navigation }: any) {
       setLoading(false);
       setError('无法连接服务器');
     });
-  }, [config, showAll]);
+  }, [config, showAll, cacheKey]);
 
   // 只在页面可见时保持连接：SSE 每 300s 推一帧全量物品列表（越大越贵），切走就断
   // 4 分钟内切回来且参数没变就不重连，直接用内存里的那份
@@ -150,7 +181,11 @@ export default function ItemsScreen({ navigation }: any) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <StatusDot ok={connected} />
             <Text style={styles.subtitle}>
-              {connected ? `${config.scheme}://${config.ip}` : error ?? '连接中…'}
+              {connected
+                ? `${config.scheme}://${config.ip}`
+                : cachedAt
+                ? `离线缓存 · ${formatAgo(cachedAt)}`
+                : error ?? '连接中…'}
             </Text>
           </View>
         </View>
@@ -203,10 +238,20 @@ export default function ItemsScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {/* 离线提示：有缓存时不遮挡内容，只在顶部说明数据时间 */}
+      {!connected && cachedAt ? (
+        <View style={styles.offlineBar}>
+          <Ionicons name="cloud-offline-outline" size={13} color={colors.warn} />
+          <Text style={styles.offlineText} numberOfLines={1}>
+            显示 {formatAgo(cachedAt)} 的缓存，正在重连服务器…
+          </Text>
+        </View>
+      ) : null}
+
       {/* 列表 */}
       {loading && rows.length === 0 ? (
         <CenterLoading text="正在拉取网络物品…" />
-      ) : error && !connected ? (
+      ) : error && !connected && rows.length === 0 ? (
         <EmptyState icon="cloud-offline" title="连接失败" subtitle={error ?? undefined} />
       ) : rows.length === 0 ? (
         <EmptyState icon="cube-outline" title="没有匹配的物品" subtitle={keyword ? '换个关键词试试' : 'ME 网络里没有存储物品'} />
@@ -264,6 +309,18 @@ const styles = StyleSheet.create({
     marginVertical: spacing.s,
   },
   searchInput: { flex: 1, color: colors.text, fontSize: 14, paddingVertical: 10 },
+  offlineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: spacing.l,
+    marginBottom: spacing.s,
+    paddingHorizontal: spacing.m,
+    paddingVertical: 7,
+    borderRadius: radius.s,
+    backgroundColor: colors.warnSoft,
+  },
+  offlineText: { color: colors.warn, fontSize: 11, flex: 1 },
   filterRow: { flexDirection: 'row', gap: spacing.s, paddingHorizontal: spacing.l, paddingBottom: spacing.s },
   segBtn: {
     flexDirection: 'row',

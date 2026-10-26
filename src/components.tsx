@@ -198,6 +198,72 @@ export function FieldLabel({ text }: { text: string }) {
   return <Text style={{ color: colors.textDim, fontSize: 12, marginBottom: spacing.s, marginTop: spacing.m }}>{text}</Text>;
 }
 
+/** 设置页分组：标题 + 一张卡片，卡片内由若干 SettingsRow 组成 */
+export function SettingsGroup({ title, footnote, children }: { title?: string; footnote?: string; children: React.ReactNode }) {
+  return (
+    <View style={{ marginBottom: spacing.l }}>
+      {title ? <Text style={groupStyles.title}>{title}</Text> : null}
+      <View style={[card, { overflow: 'hidden' }]}>{children}</View>
+      {footnote ? <Text style={groupStyles.footnote}>{footnote}</Text> : null}
+    </View>
+  );
+}
+
+/** 设置项行：图标 + 标题/副标题 + 右侧值或自定义元素；有 onPress 时显示箭头 */
+export function SettingsRow({
+  icon,
+  label,
+  detail,
+  value,
+  onPress,
+  right,
+  tone = 'default',
+  divider = true,
+  disabled,
+}: {
+  icon?: keyof typeof Ionicons.glyphMap;
+  label: string;
+  detail?: string | null;
+  value?: string | null;
+  onPress?: () => void;
+  right?: React.ReactNode;
+  tone?: 'default' | 'bad';
+  divider?: boolean;
+  disabled?: boolean;
+}) {
+  const body = (
+    <View style={[groupStyles.row, divider && groupStyles.divider, disabled && { opacity: 0.45 }]}>
+      {icon ? (
+        <View style={[groupStyles.iconBox, tone === 'bad' && { backgroundColor: colors.badSoft }]}>
+          <Ionicons name={icon} size={16} color={tone === 'bad' ? colors.bad : colors.accent} />
+        </View>
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text style={[groupStyles.label, tone === 'bad' && { color: colors.bad }]} numberOfLines={1}>
+          {label}
+        </Text>
+        {detail ? (
+          <Text style={groupStyles.detail} numberOfLines={2}>
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+      {value ? (
+        <Text style={groupStyles.value} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
+      {right ?? (onPress ? <Ionicons name="chevron-forward" size={16} color={colors.textFaint} /> : null)}
+    </View>
+  );
+  if (!onPress) return body;
+  return (
+    <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.7}>
+      {body}
+    </TouchableOpacity>
+  );
+}
+
 const chipStyles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
@@ -271,4 +337,35 @@ const inputStyles = StyleSheet.create({
     paddingHorizontal: spacing.m,
   },
   input: { flex: 1, color: colors.text, fontSize: 15, paddingVertical: 11 },
+});
+
+const groupStyles = StyleSheet.create({
+  title: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: spacing.s,
+    marginLeft: spacing.xs,
+  },
+  footnote: { color: colors.textFaint, fontSize: 11, lineHeight: 16, marginTop: spacing.s, marginLeft: spacing.xs },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.m,
+    paddingHorizontal: spacing.m,
+    paddingVertical: 13,
+  },
+  divider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  iconBox: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.s,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentSoft,
+  },
+  label: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  detail: { color: colors.textFaint, fontSize: 11, marginTop: 2, lineHeight: 15 },
+  value: { color: colors.textDim, fontSize: 13, maxWidth: 170, textAlign: 'right' },
 });

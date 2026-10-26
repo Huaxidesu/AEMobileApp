@@ -13,10 +13,10 @@ export const BUILTIN_DB = 'itempanel.db';
  */
 export const BUILTIN_ICON_SHA = 'e073b0ab6083322475f0ba4f9defe18d56b3ade18213e26940a2fa60b275e13d';
 
-/** 默认清单地址（自建 Gitea；可用 EXPO_PUBLIC_ICON_MANIFEST_URL 覆盖，便于换镜像/本地联调） */
+/** 默认清单地址（自建 Gitea 的 ae/ 目录 raw 直链；可用 EXPO_PUBLIC_ICON_MANIFEST_URL 覆盖，便于换镜像/本地联调） */
 export const DEFAULT_MANIFEST_URL =
   process.env.EXPO_PUBLIC_ICON_MANIFEST_URL ||
-  'http://git.dafeimao.net/huaxidesu/dsmgtnhupdate/raw/branch/main/ae/version.json';
+  'https://git.dafeimao.net/huaxidesu/dsmgtnhupdate/raw/branch/main/ae/version.json';
 
 const DB_DIR = `${FileSystem.documentDirectory}SQLite/`;
 const TMP_FILE = `${FileSystem.cacheDirectory}iconpack.download`;
@@ -24,6 +24,23 @@ const TMP_FILE = `${FileSystem.cacheDirectory}iconpack.download`;
 const KEY_ACTIVE = 'icons.active_db';
 const KEY_META = 'icons.meta';
 const KEY_URL = 'icons.manifest_url';
+
+/**
+ * 把用户填的地址规范成 version.json 的直链。
+ * 常见输入是 Gitea 的网页地址 `.../src/branch/main/ae`，需要换成 `.../raw/branch/main/ae`；
+ * 目录地址补上 `version.json`，已经是 .json 的原样使用。
+ */
+export function normalizeManifestUrl(input: string): string {
+  let url = input.trim().replace(/\/+$/, '');
+  if (!url) return DEFAULT_MANIFEST_URL;
+  url = url.replace('/src/branch/', '/raw/branch/');
+  if (!/\.json$/i.test(url)) url = `${url}/version.json`;
+  return url;
+}
+
+export function isValidManifestUrl(url: string): boolean {
+  return /^https?:\/\/\S+$/i.test(url.trim());
+}
 
 export interface IconPackInfo {
   version: string;
@@ -54,13 +71,39 @@ export interface InstalledInfo {
 
 // ---- 当前生效的库 / 清单地址 ----
 
+/**
+ * 更新源的进程内镜像。expo-secure-store 只有异步删除接口，
+ * 靠这层缓存保证「恢复默认」之后读到的值立刻是默认值。
+ */
+let manifestUrlCache: string | null | undefined;
+
 export function getManifestUrl(): string {
-  return SecureStore.getItem(KEY_URL) || DEFAULT_MANIFEST_URL;
+  if (manifestUrlCache === undefined) manifestUrlCache = SecureStore.getItem(KEY_URL);
+  return manifestUrlCache || DEFAULT_MANIFEST_URL;
 }
 
-export function setManifestUrl(url: string): void {
-  if (url) SecureStore.setItem(KEY_URL, url);
-  else SecureStore.deleteItemAsync(KEY_URL);
+/** 是否在用自定义更新源（否则走默认源） */
+export function isCustomManifestUrl(): boolean {
+  return !!getManifestUrlCacheRaw();
+}
+
+function getManifestUrlCacheRaw(): string | null {
+  if (manifestUrlCache === undefined) manifestUrlCache = SecureStore.getItem(KEY_URL);
+  return manifestUrlCache;
+}
+
+/** 保存自定义更新源；传空串恢复默认。返回实际生效的地址（已规范化）。 */
+export function setManifestUrl(input: string): string {
+  const url = input.trim() ? normalizeManifestUrl(input) : '';
+  // 填的就是默认源时按"未自定义"处理，避免"恢复默认"按钮无意义地亮着
+  if (!url || url === DEFAULT_MANIFEST_URL) {
+    manifestUrlCache = null;
+    SecureStore.deleteItemAsync(KEY_URL).catch(() => undefined);
+    return DEFAULT_MANIFEST_URL;
+  }
+  manifestUrlCache = url;
+  SecureStore.setItem(KEY_URL, url);
+  return url;
 }
 
 export function getActiveDb(): string {
@@ -93,8 +136,9 @@ export function subscribeActiveDb(fn: () => void): () => void {
 
 function setActiveDb(name: string, meta?: { version: string; sha256: string; size: number } | null) {
   if (name === BUILTIN_DB) {
-    SecureStore.deleteItemAsync(KEY_ACTIVE);
-    SecureStore.deleteItemAsync(KEY_META);
+    // 写回内置库名而不是删除：SecureStore 没有同步删除接口，删除后紧跟的读取会读到旧值
+    SecureStore.setItem(KEY_ACTIVE, BUILTIN_DB);
+    SecureStore.deleteItemAsync(KEY_META).catch(() => undefined);
   } else {
     SecureStore.setItem(KEY_ACTIVE, name);
     if (meta) SecureStore.setItem(KEY_META, JSON.stringify(meta));
@@ -120,11 +164,21 @@ export async function resolveActiveDb(): Promise<string> {
 // ---- 远端清单 ----
 
 export async function fetchManifest(url = getManifestUrl()): Promise<RemoteManifest> {
-  const resp = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
-  if (!resp.ok) throw new Error(`清单请求失败 HTTP ${resp.status}`);
-  const data = (await resp.json()) as RemoteManifest;
-  if (!data?.icons?.sha256) throw new Error('清单格式不对：缺少 icons.sha256');
-  return data;
+  // 清单地址填错或服务器不响应时不能让界面一直转圈
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const resp = await fetch(url, { headers: { 'cache-control': 'no-cache' }, signal: controller.signal });
+    if (!resp.ok) throw new Error(`清单请求失败 HTTP ${resp.status}`);
+    const data = (await resp.json()) as RemoteManifest;
+    if (!data?.icons?.sha256) throw new Error('清单格式不对：缺少 icons.sha256');
+    return data;
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new Error('清单请求超时，请检查更新源地址');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** 清单里的库和本地是不是同一个（用 sha256 判定，不看版本号排序） */
@@ -215,4 +269,42 @@ async function cleanupOldPacks(keep: string): Promise<void> {
   } catch {
     // 清理失败不影响使用
   }
+}
+
+// ---- 空间统计与清理 ----
+
+/** 在线图标库占用的空间：当前库 + 残留旧库 + 临时下载文件 */
+export async function getOnlinePackBytes(): Promise<number> {
+  let total = 0;
+  try {
+    for (const f of await FileSystem.readDirectoryAsync(DB_DIR)) {
+      if (!f.startsWith('icons-')) continue;
+      const info = await FileSystem.getInfoAsync(`${DB_DIR}${f}`);
+      if (info.exists && !info.isDirectory) total += info.size ?? 0;
+    }
+  } catch {
+    // 目录还不存在
+  }
+  try {
+    const tmp = await FileSystem.getInfoAsync(TMP_FILE);
+    if (tmp.exists && !tmp.isDirectory) total += tmp.size ?? 0;
+  } catch {
+    // 没有临时文件
+  }
+  return total;
+}
+
+/** 删除所有在线图标库并切回内置库（内置库随 APK 分发，不受影响） */
+export async function removeOnlinePacks(): Promise<void> {
+  setActiveDb(BUILTIN_DB);
+  // 切库后 App 会重挂 SQLiteProvider，等旧连接释放再删文件
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  try {
+    for (const f of await FileSystem.readDirectoryAsync(DB_DIR)) {
+      if (f.startsWith('icons-')) await FileSystem.deleteAsync(`${DB_DIR}${f}`, { idempotent: true });
+    }
+  } catch {
+    // 删不掉时保留文件，下次启动会按 active_db 忽略它们
+  }
+  await FileSystem.deleteAsync(TMP_FILE, { idempotent: true }).catch(() => undefined);
 }

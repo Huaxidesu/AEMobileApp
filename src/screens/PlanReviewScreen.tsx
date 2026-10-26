@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
 import { CraftPlan, CraftingCPUInfo, formatItemCount, getJson, postForm } from '../api';
 import { resolveItem } from '../db';
+import { readCache, scopeKey, writeCache } from '../cache';
 import { colors, radius, spacing, card } from '../theme';
 import { Chip, EmptyState, ItemIcon, PrimaryButton, ProgressBar } from '../components';
 import { showToast } from '../toast';
@@ -59,17 +60,42 @@ export default function PlanReviewScreen({ route, navigation }: any) {
 
   const canCraft = missingRows.length === 0 || allowMissing;
 
+  // 与合成监控共用同一份 CPU 列表缓存
+  const cacheKey = `cpus:${scopeKey(config)}`;
+  const usableCpus = (list: CraftingCPUInfo[]) => list.filter((c) => c.storage > plan.bytesUsed && c.item == null);
+
   useEffect(() => {
+    let alive = true;
+    readCache<CraftingCPUInfo[]>(cacheKey).then((hit) => {
+      if (!alive || !hit) return;
+      setCpus((prev) => (prev.length > 0 ? prev : usableCpus(hit.data)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cacheKey]);
+
+  useEffect(() => {
+    let alive = true;
     getJson<CraftingCPUInfo[]>(config, '/AE2/getCraftingCpuInfoNoSSE', {
       ownerUUID: config.uuid,
       ...(config.mainnet ?? {}),
-    }).then((resp) => {
-      if (resp.succeed) {
-        const usable = (resp.body ?? []).filter((c) => c.storage > plan.bytesUsed && c.item == null);
+    })
+      .then((resp) => {
+        if (!alive || !resp.succeed) return;
+        const all = resp.body ?? [];
+        writeCache(cacheKey, all);
+        const usable = usableCpus(all);
         setCpus(usable);
         if (usable.length === 0) showToast('没有空闲且容量足够的合成 CPU', 'bad');
-      }
-    });
+      })
+      .catch(() => {
+        // 取不到实时列表时保留缓存结果，提交阶段仍会由服务器校验
+        if (alive) showToast('获取 CPU 列表失败，显示的是缓存数据', 'bad');
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   async function submit() {
