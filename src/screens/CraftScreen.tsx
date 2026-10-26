@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useFocusEffect } from '@react-navigation/native';
 import EventSource from 'react-native-sse';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
@@ -43,10 +44,16 @@ export default function CraftScreen() {
     es.addEventListener('error', () => setConnected(false));
   }, [config]);
 
-  useEffect(() => {
-    connect();
-    return () => esRef.current?.close();
-  }, [connect]);
+  // 只在本页可见时连：SSE 每 5s 推一次 CPU 列表，切走就断
+  useFocusEffect(
+    useCallback(() => {
+      connect();
+      return () => {
+        esRef.current?.close();
+        esRef.current = null;
+      };
+    }, [connect]),
+  );
 
   return (
     <View style={styles.screen}>

@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useFocusEffect } from '@react-navigation/native';
 import EventSource from 'react-native-sse';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
@@ -32,6 +33,8 @@ export default function ItemsScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  const lastAt = useRef(0);
+  const lastKey = useRef('');
 
   const connect = useCallback(() => {
     esRef.current?.close();
@@ -55,6 +58,7 @@ export default function ItemsScreen({ navigation }: any) {
           return;
         }
         setRaw(resp.body ?? []);
+        lastAt.current = Date.now();
         setConnected(true);
         setLoading(false);
       } catch (e) {
@@ -68,11 +72,21 @@ export default function ItemsScreen({ navigation }: any) {
     });
   }, [config, showAll]);
 
-  // showAll 变化时重连（craftableOnly 是服务端参数）
-  useEffect(() => {
-    connect();
-    return () => esRef.current?.close();
-  }, [connect]);
+  // 只在页面可见时保持连接：SSE 每 300s 推一帧全量物品列表（越大越贵），切走就断
+  // 4 分钟内切回来且参数没变就不重连，直接用内存里的那份
+  const connKey = String(showAll);
+  useFocusEffect(
+    useCallback(() => {
+      if (Date.now() - lastAt.current > 240000 || lastKey.current !== connKey) {
+        lastKey.current = connKey;
+        connect();
+      }
+      return () => {
+        esRef.current?.close();
+        esRef.current = null;
+      };
+    }, [connect, connKey]),
+  );
 
   // 搜索防抖
   useEffect(() => {

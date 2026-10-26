@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import EventSource from 'react-native-sse';
+import { useFocusEffect } from '@react-navigation/native';
 import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TitleComponent } from 'echarts/components';
@@ -50,10 +51,17 @@ export default function MonitorScreen() {
     es.addEventListener('error', () => setConnected(false));
   }, [config]);
 
-  useEffect(() => {
-    connect();
-    return () => esRef.current?.close();
-  }, [connect]);
+  // 只在本页可见时订阅：MSPT 每秒一帧，长期挂着纯浪费流量和电
+  useFocusEffect(
+    useCallback(() => {
+      connect();
+      return () => {
+        esRef.current?.close();
+        esRef.current = null;
+        setConnected(false);
+      };
+    }, [connect]),
+  );
 
   // 初始化图表
   const chartW = Math.min(Dimensions.get('window').width - spacing.l * 2 - spacing.l * 2, 340);
@@ -84,19 +92,21 @@ export default function MonitorScreen() {
     };
   }, []);
 
-  // 每秒刷新曲线数据
-  useEffect(() => {
-    const t = setInterval(() => {
-      chartRef.current?.setOption({
-        series: [
-          { data: series5.current },
-          { data: series30.current },
-          { data: series300.current },
-        ],
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
+  // 每秒把缓冲刷进图表（同样只在可见时跑）
+  useFocusEffect(
+    useCallback(() => {
+      const t = setInterval(() => {
+        chartRef.current?.setOption({
+          series: [
+            { data: series5.current },
+            { data: series30.current },
+            { data: series300.current },
+          ],
+        });
+      }, 1000);
+      return () => clearInterval(t);
+    }, []),
+  );
 
   const stats = useMemo(
     () =>
