@@ -2,14 +2,13 @@ module.exports = {
   "expo": {
     "name": "AEMobile",
     "slug": "AEMobile",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0B0E14"
     },
     "ios": {
       "supportsTablet": true,

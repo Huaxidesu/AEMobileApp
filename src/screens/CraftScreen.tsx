@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventSource from 'react-native-sse';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
@@ -16,6 +17,7 @@ import { showToast } from '../toast';
 export default function CraftScreen() {
   const db = useSQLiteContext();
   const { config } = useConfig();
+  const insets = useSafeAreaInsets();
   const [cpus, setCpus] = useState<CraftingCPUInfo[]>([]);
   const [connected, setConnected] = useState(false);
   const [detailCpu, setDetailCpu] = useState<CraftingCPUInfo | null>(null);
@@ -82,7 +84,7 @@ export default function CraftScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: spacing.l + insets.top }]}>
         <View>
           <Text style={styles.title}>合成监控</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>

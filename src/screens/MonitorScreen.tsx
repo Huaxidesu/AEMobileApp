@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import EventSource from 'react-native-sse';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TitleComponent } from 'echarts/components';
@@ -32,6 +33,7 @@ function msptColor(v: number): string {
 
 export default function MonitorScreen() {
   const { config } = useConfig();
+  const insets = useSafeAreaInsets();
   const [connected, setConnected] = useState(false);
   const [latest, setLatest] = useState<[number, number, number]>([0, 0, 0]);
   /** 曲线来自缓存的写入时间；收到实时帧后清空 */
@@ -161,7 +163,7 @@ export default function MonitorScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: spacing.l + insets.top }]}>
         <View>
           <Text style={styles.title}>服务器监控</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>

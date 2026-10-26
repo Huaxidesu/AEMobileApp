@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventSource from 'react-native-sse';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
@@ -24,6 +25,8 @@ interface Row extends ResolvedItem {
 export default function ItemsScreen({ navigation }: any) {
   const db = useSQLiteContext();
   const { config } = useConfig();
+  // 状态栏是透明的（内容画在它下面），顶部要自己让出高度
+  const insets = useSafeAreaInsets();
   const [raw, setRaw] = useState<ItemStackResp[]>([]);
   const [connected, setConnected] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -175,7 +178,7 @@ export default function ItemsScreen({ navigation }: any) {
   return (
     <View style={styles.screen}>
       {/* 顶部栏 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: spacing.l + insets.top }]}>
         <View>
           <Text style={styles.title}>物品终端</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>

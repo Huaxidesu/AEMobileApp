@@ -2,6 +2,7 @@
 import React, { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfig } from '../config';
 import { baseUrl } from '../api';
 import { formatBytes, summarizeCache } from '../cache';
@@ -14,6 +15,7 @@ import { SettingsGroup, SettingsRow, StatusDot } from '../components';
 
 export default function SettingsScreen({ navigation }: any) {
   const { config, complete, accountName } = useConfig();
+  const insets = useSafeAreaInsets();
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [cacheCount, setCacheCount] = useState(0);
   const [iconVersion, setIconVersion] = useState<string | null>(getInstalledInfo().version);
@@ -43,7 +45,7 @@ export default function SettingsScreen({ navigation }: any) {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: spacing.l + insets.top }]}>
         <Text style={styles.title}>设置</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
           <StatusDot ok={complete} />

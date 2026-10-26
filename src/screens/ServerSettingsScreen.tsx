@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfig } from '../config';
 import { AENetwork, DEFAULT_PORT, baseUrl, getJson, testConnection } from '../api';
 import {
@@ -24,6 +25,7 @@ import { showToast } from '../toast';
 
 export default function ServerSettingsScreen({ navigation }: any) {
   const { reload } = useConfig();
+  const insets = useSafeAreaInsets();
 
   const [accounts, setAccounts] = useState<ServerAccount[]>(() => loadAccounts());
   const [activeId, setActiveId] = useState<string>(() => getActiveAccountId());
@@ -212,7 +214,14 @@ export default function ServerSettingsScreen({ navigation }: any) {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: spacing.l,
+          // 首次配置时这页没有原生导航头，顶部要让出状态栏
+          paddingTop: spacing.l + (isSetup ? insets.top : 0),
+          paddingBottom: spacing.xxl,
+        }}
+      >
         {isSetup ? (
           <View style={{ marginBottom: spacing.l }}>
             <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>连接服务器</Text>

@@ -1,6 +1,7 @@
 // 轻量 Toast：模块级 showToast + 挂载在根部的宿主组件
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from './theme';
 
 type ToastKind = 'ok' | 'bad' | 'info';
@@ -24,6 +25,7 @@ const KIND_COLOR: Record<ToastKind, string> = {
 };
 
 export function ToastHost() {
+  const insets = useSafeAreaInsets();
   const [data, setData] = useState<ToastData | null>(null);
   const anim = useRef(new Animated.Value(0)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,6 +51,7 @@ export function ToastHost() {
       pointerEvents="none"
       style={[
         styles.wrap,
+        { top: insets.top + spacing.m },
         {
           opacity: anim,
           transform: [
