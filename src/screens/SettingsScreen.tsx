@@ -7,6 +7,19 @@ import { AENetwork, baseUrl, getJson, saveConfig, testConnection } from '../api'
 import { colors, radius, spacing, card } from '../theme';
 import { Chip, FieldLabel, GhostButton, PrimaryButton, Segmented, StatusDot, StyledInput } from '../components';
 import { showToast } from '../toast';
+import {
+  downloadAndInstall,
+  fetchManifest,
+  getInstalledInfo,
+  hasUpdate,
+  RemoteManifest,
+  restoreBuiltin,
+} from '../iconpack';
+
+function mb(bytes: number | null | undefined): string {
+  if (!bytes) return '—';
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
 
 export default function SettingsScreen({ navigation }: any) {
   const { config, reload, complete } = useConfig();
@@ -20,6 +33,11 @@ export default function SettingsScreen({ navigation }: any) {
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [installed, setInstalled] = useState(getInstalledInfo());
+  const [manifest, setManifest] = useState<RemoteManifest | null>(null);
+  const [checkingIcons, setCheckingIcons] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     setScheme(config.scheme);
@@ -84,6 +102,41 @@ export default function SettingsScreen({ navigation }: any) {
     setSaving(false);
     showToast('设置已保存', 'ok');
     if (navigation.canGoBack()) navigation.goBack();
+  }
+
+  async function checkIcons() {
+    setCheckingIcons(true);
+    try {
+      const m = await fetchManifest();
+      setManifest(m);
+      showToast(hasUpdate(m) ? `发现新图标库 ${m.icons.version}` : '图标库已是最新', 'ok');
+    } catch (e: any) {
+      showToast(e?.message ?? '检查更新失败', 'bad');
+    } finally {
+      setCheckingIcons(false);
+    }
+  }
+
+  async function installIcons() {
+    if (!manifest) return;
+    setInstalling(true);
+    setProgress(0);
+    try {
+      const { version } = await downloadAndInstall(manifest, { onProgress: (r) => setProgress(r) });
+      setInstalled(getInstalledInfo());
+      showToast(`图标库已更新到 ${version}`, 'ok');
+    } catch (e: any) {
+      showToast(e?.message ?? '更新失败', 'bad');
+    } finally {
+      setInstalling(false);
+      setProgress(0);
+    }
+  }
+
+  function restoreIcons() {
+    restoreBuiltin();
+    setInstalled(getInstalledInfo());
+    showToast('已恢复内置图标库', 'ok');
   }
 
   return (
@@ -155,10 +208,64 @@ export default function SettingsScreen({ navigation }: any) {
           <PrimaryButton label={saving ? '保存中…' : '保存设置'} icon="checkmark" onPress={save} loading={saving} />
         </View>
 
+        <Text style={[styles.section, { marginTop: spacing.xl }]}>图标库</Text>
+        <View style={[card, { gap: spacing.m }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s }}>
+            <Ionicons name="images" size={18} color={colors.accent2} />
+            <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
+              {installed.version ? `在线版 ${installed.version}` : '内置版（随安装包）'}
+            </Text>
+            <Text style={{ color: colors.textFaint, fontSize: 11 }}>{installed.size ? mb(installed.size) : ''}</Text>
+          </View>
+          <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16 }}>
+            {manifest
+              ? `远端 ${manifest.icons.version} · ${mb(manifest.icons.size)} · ${manifest.icons.rows} 条` +
+                (manifest.note ? `\n${manifest.note}` : '')
+              : '图标库可在线更新，以后换 GTNH 版本不必重装 APK'}
+          </Text>
+          {installing ? (
+            <View style={{ gap: 4 }}>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.surfaceAlt, overflow: 'hidden' }}>
+                <View
+                  style={{
+                    height: 6,
+                    width: `${Math.max(2, Math.round(progress * 100))}%`,
+                    backgroundColor: colors.accent,
+                  }}
+                />
+              </View>
+              <Text style={{ color: colors.textFaint, fontSize: 11 }}>下载中 {Math.round(progress * 100)}%</Text>
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: spacing.s }}>
+            <View style={{ flex: 1 }}>
+              <GhostButton
+                label={checkingIcons ? '检查中…' : '检查更新'}
+                icon="cloud-download"
+                onPress={checkIcons}
+                disabled={installing || checkingIcons}
+              />
+            </View>
+            {manifest && hasUpdate(manifest) ? (
+              <View style={{ flex: 1 }}>
+                <PrimaryButton
+                  label={installing ? '安装中…' : '下载并安装'}
+                  icon="download"
+                  onPress={installIcons}
+                  loading={installing}
+                />
+              </View>
+            ) : null}
+          </View>
+          {installed.version ? (
+            <GhostButton label="恢复内置图标库" icon="refresh" onPress={restoreIcons} disabled={installing} />
+          ) : null}
+        </View>
+
         <Text style={[styles.section, { marginTop: spacing.xl }]}>关于</Text>
         <View style={[card, { gap: spacing.s }]}>
           <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
-            AEMobile v2.0.0 · GTNH AE 网络远程监控{'\n'}
+            AEMobile v2.0.2 · GTNH AE 网络远程监控{'\n'}
             服务端：github.com/koiNoCirculation/AEMobile{'\n'}
             手机端：github.com/koiNoCirculation/AEMobileApp
           </Text>

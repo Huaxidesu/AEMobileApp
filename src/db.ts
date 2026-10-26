@@ -60,6 +60,12 @@ export interface FluidRef {
 
 const fluidCache = new Map<string, FluidRef | null>();
 
+/** 图标库被在线更新替换后必须调用，否则会继续命中旧库的图标/名称 */
+export function clearDbCaches(): void {
+  itemCache.clear();
+  fluidCache.clear();
+}
+
 export function lookupFluid(db: SQLiteDatabase, fluidName: string): FluidRef | null {
   if (fluidCache.has(fluidName)) return fluidCache.get(fluidName)!;
   const row = db.getFirstSync<{ item: string; meta: number; dname: string }>(
