@@ -1,4 +1,6 @@
 # GTNH 赛博尼哥监控手机端  
+
+> 编写或修改文档、源码注释前，请先阅读[注释与 Markdown 编写规范](./doc/注释与Markdown规范.md)。
 目前本APP专供GTNH，版本2.6.0，包括BoxPluxPlus和Twisted Space Technology。  
 当GTNH进入无聊的挂机大后期的时候，你是否曾有过这种想法？  
 "啊，要是能用网页或者手机监控服务器里面干活的电子倪哥，看他们闲了就多下几单让他们干活".  

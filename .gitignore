@@ -74,3 +74,16 @@ yarn-error.*
 *.tsbuildinfo
 
 # @end expo-cli
+
+# AI 协作文档，仅本地使用
+/doc/
+
+# NEI 导出数据与重建中间产物，只提交 assets/itempanel.db
+/itempanel.csv
+/fluidcontainer.csv
+/itempanel_icons/
+/itempanel.db
+
+# 本地日志
+/metro.log
+/android/build-apk.log

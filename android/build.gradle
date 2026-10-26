@@ -4,13 +4,17 @@ buildscript {
     ext {
         buildToolsVersion = findProperty('android.buildToolsVersion') ?: '34.0.0'
         minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '23')
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '34')
+        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '35')
         targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '34')
         kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.23'
 
-        ndkVersion = "26.1.10909125"
+        ndkVersion = findProperty('android.ndkVersion') ?: "27.2.12479018"
     }
     repositories {
+        // 国内镜像优先，dl.google.com 在部分网络不可达
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
         google()
         mavenCentral()
     }
@@ -23,6 +27,26 @@ buildscript {
 
 apply plugin: "com.facebook.react.rootproject"
 
+// 项目级属性，供所有模块读取（expo-modules-core 等通过 rootProject.hasProperty('ndkVersion') 探测）
+ext {
+    ndkVersion = "27.2.12479018"
+}
+
+// 兜底：所有子项目（含第三方库）评估完成后统一注入本机 NDK 版本，
+// 避免 AGP 用默认 NDK 版本去 dl.google.com 自动下载（国内网络不可达）。
+subprojects { sp ->
+    def applyNdk = {
+        if (sp.hasProperty('android')) {
+            sp.android.ndkVersion = rootProject.ext.ndkVersion
+        }
+    }
+    if (sp.state.executed) {
+        applyNdk()
+    } else {
+        afterEvaluate applyNdk
+    }
+}
+
 allprojects {
     repositories {
         maven {
@@ -34,6 +58,9 @@ allprojects {
             url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
         }
 
+        // 国内镜像优先，dl.google.com 在部分网络不可达
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/central' }
         google()
         mavenCentral()
         maven { url 'https://www.jitpack.io' }
