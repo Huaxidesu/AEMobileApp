@@ -4,7 +4,7 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfig } from '../config';
-import { AENetwork, DEFAULT_PORT, baseUrl, getJson, testConnection } from '../api';
+import { AENetwork, DEFAULT_PORT, baseUrl, request, testConnection, normalizeToken } from '../api';
 import {
   ServerAccount,
   accountLabel,
@@ -20,7 +20,7 @@ import {
 import { ServerEntry, entryForHost, fetchServerList, loadCachedServerList, mergeServers } from '../serverlist';
 import { readCache, serverKey, writeCache } from '../cache';
 import { colors, radius, spacing, card } from '../theme';
-import { Chip, FieldLabel, GhostButton, PrimaryButton, Segmented, SettingsGroup, StatusDot, StyledInput } from '../components';
+import { Chip, FieldLabel, GhostButton, PrimaryButton, SettingsGroup, StatusDot, StyledInput } from '../components';
 import { showToast } from '../toast';
 
 export default function ServerSettingsScreen({ navigation }: any) {
@@ -32,10 +32,11 @@ export default function ServerSettingsScreen({ navigation }: any) {
 
   // 表单只服务于「当前编辑的账号」，切换账号时整体换掉
   const [name, setName] = useState('');
-  const [scheme, setScheme] = useState('http');
+  // 协议固定 TCP（2.x 的 HTTP/HTTPS 选项已取消），字段只为兼容老账号记录保留
+  const [scheme] = useState('tcp');
   const [ip, setIp] = useState('');
   const [port, setPort] = useState(DEFAULT_PORT);
-  const [uuid, setUuid] = useState('');
+  const [token, setToken] = useState('');
   const [mainnet, setMainnet] = useState<AENetwork | null>(null);
 
   const [lines, setLines] = useState<ServerEntry[]>(() => mergeServers([]));
@@ -48,20 +49,19 @@ export default function ServerSettingsScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
 
   // 网络列表与主网选择无关，按服务器指纹单独缓存
-  const netKey = `networks:${serverKey({ scheme, ip, port, uuid, mainnet: null })}`;
+  const netKey = `networks:${serverKey({ scheme, ip, port, token, mainnet: null })}`;
 
   function applyForm(acc: ServerAccount) {
     setName(acc.name);
-    setScheme(acc.scheme);
     setIp(acc.ip);
     setPort(acc.port);
-    setUuid(acc.uuid);
+    setToken(acc.token);
     setMainnet(acc.mainnet);
     setTested(null);
   }
 
   function formAccount(): ServerAccount {
-    return { id: activeId, name, scheme, ip, port, uuid, mainnet, updatedAt: Date.now() };
+    return { id: activeId, name, scheme, ip, port, token, mainnet, updatedAt: Date.now() };
   }
 
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
 
   function addAccount() {
     upsertAccount(formAccount());
-    const acc = createAccount({ scheme: 'http', port: DEFAULT_PORT, uuid: '', mainnet: null });
+    const acc = createAccount({ scheme: 'tcp', port: DEFAULT_PORT, token: '', mainnet: null });
     setActiveAccountId(acc.id);
     setActiveId(acc.id);
     setAccounts(loadAccounts());
@@ -140,12 +140,12 @@ export default function ServerSettingsScreen({ navigation }: any) {
   }
 
   async function fetchNetworks() {
-    if (!ip || !uuid) {
+    if (!ip || !token) {
       showToast('请先填写服务器地址和密码', 'bad');
       return;
     }
     try {
-      const resp = await getJson<AENetwork[]>({ scheme, ip, port, uuid, mainnet }, '/AE2/getNetworks', { ownerUUID: uuid });
+      const resp = await request<AENetwork[]>({ scheme, ip, port, token, mainnet }, 'networks');
       if (!resp.succeed) {
         showToast(resp.message ?? '获取网络列表失败', 'bad');
         return;
@@ -176,20 +176,23 @@ export default function ServerSettingsScreen({ navigation }: any) {
       return;
     }
     setTesting(true);
-    const okScheme = await testConnection(ip, port);
+    // 只握手不鉴权，不需要密码；顺带对时（签名只接受 ±600s 偏差）
+    const res = await testConnection(ip, port);
     setTesting(false);
-    if (okScheme) {
-      setScheme(okScheme);
-      setTested(okScheme);
-      showToast(`${okScheme.toUpperCase()} 连接成功`, 'ok');
-    } else {
-      setTested(null);
-      showToast('连接失败，请检查地址、端口和防火墙', 'bad');
+    if (res.ok) {
+      setTested('tcp');
+      const offset = res.offset ?? 0;
+      const skew = Math.abs(offset) >= 30 ? `（已校正本机时钟偏差 ${Math.round(offset)} 秒）` : '';
+      const ver = res.ver ? ` · mod ${res.ver}` : '';
+      showToast(`TCP 连接成功${ver}${skew}`, 'ok');
+      return;
     }
+    setTested(null);
+    showToast('连接失败，请检查地址、端口和防火墙（mod 默认 44444）', 'bad');
   }
 
   async function save() {
-    if (!ip || !uuid) {
+    if (!ip || !token) {
       showToast('服务器地址和密码不能为空', 'bad');
       return;
     }
@@ -284,15 +287,6 @@ export default function ServerSettingsScreen({ navigation }: any) {
               <StyledInput value={name} onChangeText={setName} placeholder="例如 主号 / 小号" autoCorrect={false} />
             </View>
 
-            <Segmented
-              options={[
-                { key: 'http', label: 'HTTP' },
-                { key: 'https', label: 'HTTPS' },
-              ]}
-              value={scheme}
-              onChange={setScheme}
-            />
-
             <View>
               <FieldLabel text="线路" />
               <TouchableOpacity style={styles.lineRow} activeOpacity={0.7} onPress={openLinePicker}>
@@ -310,12 +304,12 @@ export default function ServerSettingsScreen({ navigation }: any) {
               <StyledInput value={ip} onChangeText={setIp} placeholder="例如 mc.dafeimao.net" autoCorrect={false} />
             </View>
             <View>
-              <FieldLabel text="端口（mod 默认 44444）" />
+              <FieldLabel text="端口（mod 的 config 里 [server] port，默认 44444）" />
               <StyledInput value={port} onChangeText={setPort} keyboardType="number-pad" />
             </View>
             <View>
-              <FieldLabel text="访问密码（UUID 首段）" />
-              <StyledInput value={uuid} onChangeText={setUuid} placeholder="放置监控器后从聊天栏获取" secure />
+              <FieldLabel text="访问密码" />
+              <StyledInput value={token} onChangeText={(v: string) => setToken(normalizeToken(v))} placeholder="放置监控器后聊天栏里的 26 位密码" secure />
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
@@ -347,7 +341,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
             </View>
             <GhostButton label="获取网络列表并选择" icon="download" onPress={fetchNetworks} />
             <Text style={{ color: colors.textFaint, fontSize: 11 }}>
-              当前连接：{baseUrl({ scheme, ip, port, uuid, mainnet }) || '未配置'}
+              当前连接：{baseUrl({ scheme, ip, port, token, mainnet }) || '未配置'}
             </Text>
           </View>
         </SettingsGroup>

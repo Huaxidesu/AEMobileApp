@@ -4,10 +4,11 @@ import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'r
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import EventSource from 'react-native-sse';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
-import { ApiResponse, ItemStackResp, openSSE, formatItemCount } from '../api';
+import { ItemStackResp, openStream, formatItemCount, parseFrame } from '../api';
+import type { Stream } from '../net/conn';
+import { ItemAccumulator, frameError } from '../frames';
 import { resolveItem, searchItemKeys, ResolvedItem } from '../db';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { colors, spacing, radius } from '../theme';
@@ -38,7 +39,7 @@ export default function ItemsScreen({ navigation }: any) {
   const [error, setError] = useState<string | null>(null);
   /** 当前列表来自缓存的写入时间；联网收到新帧后清空 */
   const [cachedAt, setCachedAt] = useState<number | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<Stream | null>(null);
   const lastAt = useRef(0);
   const lastKey = useRef('');
   /** 已经收到过实时帧：迟到的缓存读取不能覆盖它 */
@@ -65,50 +66,67 @@ export default function ItemsScreen({ navigation }: any) {
     };
   }, [cacheKey]);
 
+  const connKey = String(showAll);
+  const accRef = useRef(new ItemAccumulator());
+  const connKeyRef = useRef('');
+
   const connect = useCallback(() => {
     esRef.current?.close();
     if (!config.mainnet) return;
     setError(null);
     setLoading(true);
+    // 过滤条件变了就是另一份数据，增量和旧 sid 都不能沿用
+    if (connKeyRef.current !== connKey) {
+      accRef.current.reset();
+      connKeyRef.current = connKey;
+    }
     const { dimid, x, y, z } = config.mainnet;
-    const es: EventSource = openSSE(config, '/AE2/getItems', {
-      ownerUUID: config.uuid,
+    const es: Stream = openStream(config, 'items', {
       x, y, z, dimid,
       craftableOnly: !showAll,
+      // 断线重连带上次的 sid：服务端能接着发增量，省掉一次全量
+      sid: accRef.current.sid || undefined,
     });
     esRef.current = es;
     es.addEventListener('message', (ev: any) => {
-      try {
-        const resp: ApiResponse<ItemStackResp[]> = JSON.parse(ev.data);
-        if (!resp.succeed) {
-          setError(resp.message ?? '服务器拒绝请求');
-          es.close();
-          setConnected(false);
-          return;
-        }
-        const list = resp.body ?? [];
-        liveRef.current = true;
-        setRaw(list);
-        setCachedAt(null);
-        lastAt.current = Date.now();
-        setConnected(true);
-        setLoading(false);
-        // 帧间隔 300s，限 10s 一次写盘足以覆盖刷新按钮连点的情况
-        writeCache(cacheKey, list, 10000);
-      } catch (e) {
+      const frame = parseFrame(ev.data);
+      if (!frame) {
         setError('数据解析失败');
+        return;
       }
+      const err = frameError(frame);
+      if (err) {
+        setError(err);
+        es.close();
+        setConnected(false);
+        setLoading(false);
+        return;
+      }
+      const kind = accRef.current.apply(frame);
+      if (kind === 'heartbeat') {
+        setConnected(true);
+        return;
+      }
+      const list = accRef.current.list();
+      liveRef.current = true;
+      setRaw(list);
+      setCachedAt(null);
+      lastAt.current = Date.now();
+      setConnected(true);
+      setLoading(false);
+      // 帧间隔 600s，限 10s 一次写盘足以覆盖刷新按钮连点的情况
+      writeCache(cacheKey, list, 10000);
     });
-    es.addEventListener('error', () => {
+    // 断线重连由 net/conn.ts 统一处理：重连成功后会自动续订，这里的监听器不用重建
+    es.addEventListener('error', (ev: any) => {
       setConnected(false);
       setLoading(false);
-      setError('无法连接服务器');
+      setError(ev?.xhrStatus === 401 ? '密码错误或已失效，请到设置里重新粘贴' : '无法连接服务器');
     });
-  }, [config, showAll, cacheKey]);
+  }, [config, showAll, cacheKey, connKey]);
 
-  // 只在页面可见时保持连接：SSE 每 300s 推一帧全量物品列表（越大越贵），切走就断
+  // 只在页面可见时保持连接：SSE 每 600s 推一帧（首帧全量、之后增量），切走就断
   // 4 分钟内切回来且参数没变就不重连，直接用内存里的那份
-  const connKey = String(showAll);
   useFocusEffect(
     useCallback(() => {
       if (Date.now() - lastAt.current > 240000 || lastKey.current !== connKey) {
@@ -185,7 +203,7 @@ export default function ItemsScreen({ navigation }: any) {
             <StatusDot ok={connected} />
             <Text style={styles.subtitle}>
               {connected
-                ? `${config.scheme}://${config.ip}`
+                ? `${config.ip}:${config.port}`
                 : cachedAt
                 ? `离线缓存 · ${formatAgo(cachedAt)}`
                 : error ?? '连接中…'}

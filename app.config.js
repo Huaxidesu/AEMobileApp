@@ -2,7 +2,7 @@ module.exports = {
   "expo": {
     "name": "AEMobile",
     "slug": "AEMobile",
-    "version": "2.0.5",
+    "version": "3.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,14 +13,15 @@ module.exports = {
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.youtiao.aemonitor",
-      "buildNumber": "4"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff",
       },
-      "package": "dev.youtiao.aemonitor"
+      "package": "dev.youtiao.aemonitor",
+      "versionCode": 30
     },
     "web": {
       "favicon": "./assets/favicon.png"

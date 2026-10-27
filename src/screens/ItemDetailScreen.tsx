@@ -1,10 +1,9 @@
-// 物品详情 + 发起合成计划（SSE 进度）
+// 物品详情 + 发起合成计划（服务端分片模拟，边算边回进度）
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import EventSource from 'react-native-sse';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useConfig } from '../config';
-import { CraftPlan, formatItemCount, openSSE } from '../api';
+import { CraftPlan, formatItemCount, request } from '../api';
 import { resolveItem } from '../db';
 import { colors, radius, spacing, card } from '../theme';
 import { Chip, FieldLabel, ItemIcon, PrimaryButton, GhostButton, StyledInput } from '../components';
@@ -21,12 +20,13 @@ export default function ItemDetailScreen({ route, navigation }: any) {
   const [countText, setCountText] = useState('64');
   const [calculating, setCalculating] = useState(false);
   const [resolvedCount, setResolvedCount] = useState(0);
-  const esRef = useRef<EventSource | null>(null) as any;
+  /** 用户中途返回：结果回来时直接丢弃，不要再跳页 */
+  const abandonedRef = useRef(false);
 
   const isFluid = resolved.original_name != null;
   const count = parseInt(countText, 10);
 
-  function generate() {
+  async function generate() {
     if (Number.isNaN(count) || count <= 0) {
       showToast('请输入正确的合成数量', 'bad');
       return;
@@ -37,43 +37,36 @@ export default function ItemDetailScreen({ route, navigation }: any) {
     }
     setCalculating(true);
     setResolvedCount(0);
-    const es: EventSource = openSSE(
-      config,
-      '/AE2/generateCraftingPlan',
-      { ownerUUID: config.uuid },
-      {
-        ownerUUID: config.uuid,
-        ...(config.mainnet ?? {}),
-        item: resolved.original_name ?? resolved.name,
-        meta: String(resolved.original_meta ?? resolved.meta),
-        nbt: resolved.nbt ?? '',
-        count: String(count),
-      },
-    );
-    esRef.current = es;
-    es.addEventListener('message', (ev: any) => {
-      let data: any;
-      try {
-        data = JSON.parse(ev.data);
-      } catch {
+    abandonedRef.current = false;
+    try {
+      // 服务端分片跑模拟，每片回一条进度（body 是 "SIMULATING - resolved: N"）
+      const resp = await request<CraftPlan>(
+        config,
+        'plan',
+        {
+          ...(config.mainnet ?? {}),
+          item: resolved.original_name ?? resolved.name,
+          meta: resolved.original_meta ?? resolved.meta,
+          nbt: resolved.nbt ?? '',
+          count,
+        },
+        (body) => {
+          const m = /resolved:\s*(\d+)/.exec(String(body));
+          if (m) setResolvedCount(parseInt(m[1], 10));
+        },
+      );
+      if (abandonedRef.current) return;
+      if (!resp.succeed) {
+        // 3.0.0 起服务端 populatePlan 用 IAEStackList，流体配方不再抛 ClassCastException，
+        // 所以这里不再有「涉及流体 = 已知限制」的说法；只兜底别的类型错误，别把 Java 堆栈甩给玩家
+        const rawMsg = resp.message ?? '生成合成计划失败';
+        const msg = /cannot be cast to|ClassCastException/.test(rawMsg)
+          ? '服务端计算这个配方时出错了（内部类型错误），请把这条反馈给服务器管理员'
+          : rawMsg;
+        showToast(msg, 'bad');
         return;
       }
-      if (!data.succeed) {
-        showToast(data.message ?? '生成合成计划失败', 'bad');
-        es.close();
-        setCalculating(false);
-        return;
-      }
-      if (typeof data.body === 'string') {
-        // 进度消息："SIMULATING - resolved: N"
-        const m = /resolved:\s*(\d+)/.exec(data.body);
-        if (m) setResolvedCount(parseInt(m[1], 10));
-        return;
-      }
-      // 最终计划
-      es.close();
-      setCalculating(false);
-      const plan: CraftPlan = data.body;
+      const plan = resp.body;
       plan.plan.sort((a, b) => b.missing - a.missing);
       navigation.navigate('PlanReview', {
         plan,
@@ -86,19 +79,18 @@ export default function ItemDetailScreen({ route, navigation }: any) {
           icon: resolved.icon,
         },
       });
-    });
-    es.addEventListener('error', () => {
-      es.close();
-      setCalculating(false);
-      showToast('获取合成计划失败，请检查连接', 'bad');
-    });
+    } catch {
+      if (!abandonedRef.current) showToast('获取合成计划失败，请检查连接', 'bad');
+    } finally {
+      if (!abandonedRef.current) setCalculating(false);
+    }
   }
 
   function goBack() {
     if (calculating) {
       Alert.alert('注意', '返回将放弃正在生成的合成计划', [
         { text: '继续等待', style: 'cancel' },
-        { text: '放弃', style: 'destructive', onPress: () => { esRef.current?.close(); setCalculating(false); navigation.goBack(); } },
+        { text: '放弃', style: 'destructive', onPress: () => { abandonedRef.current = true; setCalculating(false); navigation.goBack(); } },
       ]);
     } else {
       navigation.goBack();

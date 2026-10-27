@@ -1,5 +1,5 @@
 // 根导航：未配置 → 连接表单；已配置 → 四 Tab 主界面 + 设置子页
-import React, { useRef } from 'react';
+import React, { Suspense, useRef } from 'react';
 import { Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -11,13 +11,27 @@ import ItemsScreen from './screens/ItemsScreen';
 import ItemDetailScreen from './screens/ItemDetailScreen';
 import PlanReviewScreen from './screens/PlanReviewScreen';
 import CraftScreen from './screens/CraftScreen';
-import MonitorScreen from './screens/MonitorScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ServerSettingsScreen from './screens/ServerSettingsScreen';
 import ServerListScreen from './screens/ServerListScreen';
 import IconPackScreen from './screens/IconPackScreen';
 import CacheScreen from './screens/CacheScreen';
 import AboutScreen from './screens/AboutScreen';
+
+/**
+ * 监控页懒加载：它依赖 echarts（约 1MB JS）+ react-native-echarts，
+ * 静态引入会在启动时就解析一遍。而 MSPT 已移除，这一页目前只是占位，
+ * 大多数人根本不会打开，所以推迟到真正切过去时再加载。
+ */
+const MonitorScreen = React.lazy(() => import('./screens/MonitorScreen'));
+
+function LazyMonitor() {
+  return (
+    <Suspense fallback={<View style={{ flex: 1, backgroundColor: colors.bg }} />}>
+      <MonitorScreen />
+    </Suspense>
+  );
+}
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -72,7 +86,7 @@ function MainTabs() {
     >
       <Tabs.Screen name="Items" component={ItemsScreen} />
       <Tabs.Screen name="Craft" component={CraftScreen} />
-      <Tabs.Screen name="Monitor" component={MonitorScreen} />
+      <Tabs.Screen name="Monitor" component={LazyMonitor} />
       <Tabs.Screen name="Settings" component={SettingsScreen} />
     </Tabs.Navigator>
   );

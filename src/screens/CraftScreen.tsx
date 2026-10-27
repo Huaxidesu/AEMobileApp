@@ -4,10 +4,11 @@ import { Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import EventSource from 'react-native-sse';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
-import { ApiResponse, CraftingCPUInfo, CraftTaskItem, formatItemCount, openSSE, postForm } from '../api';
+import { CraftingCPUInfo, CraftTaskItem, formatItemCount, openStream, parseFrame, request } from '../api';
+import type { Stream } from '../net/conn';
+import { CpuAccumulator, TaskAccumulator, frameError } from '../frames';
 import { resolveItem } from '../db';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { colors, radius, spacing, card } from '../theme';
@@ -23,7 +24,7 @@ export default function CraftScreen() {
   const [detailCpu, setDetailCpu] = useState<CraftingCPUInfo | null>(null);
   /** 当前列表来自缓存的写入时间；收到实时帧后清空 */
   const [cachedAt, setCachedAt] = useState<number | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<Stream | null>(null);
   const liveRef = useRef(false);
 
   const cacheKey = `cpus:${scopeKey(config)}`;
@@ -42,32 +43,38 @@ export default function CraftScreen() {
     };
   }, [cacheKey]);
 
+  const accRef = useRef(new CpuAccumulator());
+
   const connect = useCallback(() => {
     esRef.current?.close();
     if (!config.mainnet) return;
     const { dimid, x, y, z } = config.mainnet;
-    const es: EventSource = openSSE(config, '/AE2/getCraftingCpuInfo', {
-      ownerUUID: config.uuid,
+    const es: Stream = openStream(config, 'cpus', {
       x, y, z, dimid,
+      sid: accRef.current.sid || undefined,
     });
     esRef.current = es;
     es.addEventListener('message', (ev: any) => {
-      try {
-        const resp: ApiResponse<CraftingCPUInfo[]> = JSON.parse(ev.data);
-        if (resp.succeed) {
-          const list = resp.body ?? [];
-          liveRef.current = true;
-          setCpus(list);
-          setCachedAt(null);
-          setConnected(true);
-          // 5s 一帧，限 20s 一次写盘
-          writeCache(cacheKey, list, 20000);
-        } else {
-          es.close();
-          setConnected(false);
-        }
-      } catch {}
+      const frame = parseFrame(ev.data);
+      if (!frame) return;
+      if (frameError(frame)) {
+        es.close();
+        setConnected(false);
+        return;
+      }
+      if (accRef.current.apply(frame) === 'heartbeat') {
+        setConnected(true);
+        return;
+      }
+      const list = accRef.current.list();
+      liveRef.current = true;
+      setCpus(list);
+      setCachedAt(null);
+      setConnected(true);
+      // 5s 一帧，限 20s 一次写盘
+      writeCache(cacheKey, list, 20000);
     });
+    // 断线重连由 net/conn.ts 统一处理（重连后自动续订）
     es.addEventListener('error', () => setConnected(false));
   }, [config, cacheKey]);
 
@@ -130,6 +137,10 @@ export default function CraftScreen() {
                   ) : (
                     <Text style={{ color: colors.textFaint, fontSize: 12 }}>空闲中</Text>
                   )}
+                  {/* 容量与并行度：下单时要靠这两个判断能不能装下 / 跑多快 */}
+                  <Text style={{ color: colors.textFaint, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
+                    容量 {formatItemCount(cpu.storage)} · 并行 {cpu.parallelism}
+                  </Text>
                 </View>
                 {busy ? <Chip label="运行中" tone="accent" icon="pulse" /> : <Chip label="空闲" tone="neutral" />}
               </View>
@@ -161,7 +172,7 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
   const { config } = useConfig();
   const [tasks, setTasks] = useState<CraftTaskItem[] | null>(null);
   const [dead, setDead] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<Stream | null>(null);
 
   const cacheKey = `details:${scopeKey(config)}#${cpu.idx}`;
 
@@ -181,26 +192,29 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
   useEffect(() => {
     if (!config.mainnet) return;
     const { dimid, x, y, z } = config.mainnet;
-    const es: EventSource = openSSE(config, '/AE2/getCraftingDetails', {
-      ownerUUID: config.uuid,
+    const taskAcc = new TaskAccumulator();
+    const es: Stream = openStream(config, 'details', {
       x, y, z, dimid,
       cpuid: cpu.idx,
     });
     esRef.current = es;
     es.addEventListener('message', (ev: any) => {
-      try {
-        const resp: ApiResponse<CraftTaskItem[]> = JSON.parse(ev.data);
-        if (resp.succeed) {
-          const list = resp.body ?? [];
-          setTasks(list);
-          setDead(false);
-          // 5s 一帧，限 20s 一次写盘
-          writeCache(cacheKey, list, 20000);
-        } else {
-          setDead(true);
-          es.close();
-        }
-      } catch {}
+      const frame = parseFrame(ev.data);
+      if (!frame) return;
+      if (frameError(frame)) {
+        setDead(true);
+        es.close();
+        return;
+      }
+      if (taskAcc.apply(frame) === 'heartbeat') {
+        setDead(false);
+        return;
+      }
+      const list = taskAcc.list();
+      setTasks(list);
+      setDead(false);
+      // 5s 一帧，限 20s 一次写盘
+      writeCache(cacheKey, list, 20000);
     });
     es.addEventListener('error', () => setDead(true));
     return () => es.close();
@@ -218,7 +232,7 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
         style: 'destructive',
         onPress: async () => {
           try {
-            await postForm(config, '/AE2/cancelTask', { ownerUUID: config.uuid, ...(config.mainnet ?? {}), cpuid: cpu.idx });
+            await request(config, 'cancel', { ...(config.mainnet ?? {}), cpuid: cpu.idx });
             showToast('任务已取消', 'ok');
           } catch {
             showToast('取消失败', 'bad');
@@ -234,9 +248,14 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
       <View style={styles.mask}>
         <View style={styles.sheet}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>
-              #{cpu.idx} {cpu.cpuName}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800' }}>
+                #{cpu.idx} {cpu.cpuName}
+              </Text>
+              <Text style={{ color: colors.textFaint, fontSize: 11, marginTop: 2 }}>
+                容量 {formatItemCount(cpu.storage)} · 并行 {cpu.parallelism}
+              </Text>
+            </View>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={22} color={colors.textDim} />
             </TouchableOpacity>

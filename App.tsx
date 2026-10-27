@@ -4,6 +4,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider } from 'expo-sqlite';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 import RootNavigator from './src/navigation';
 import { ConfigProvider, useConfig } from './src/config';
 import { ToastHost } from './src/toast';
@@ -16,6 +18,12 @@ export default function App() {
   const [dbName, setDbName] = useState<string | null>(null);
   /** 首帧 UI 出来之前一直盖着启动页，避免 SQLite 打开/导入期间露出空白 */
   const [booted, setBooted] = useState(false);
+  /**
+   * 图标字体必须显式预加载。
+   * @expo/vector-icons 是在**第一次渲染某个图标时**才去加载 ttf 的，
+   * 所以底栏会出现「先有文字、几百毫秒后图标才冒出来」的闪烁。
+   */
+  const [fontsReady, fontError] = useFonts(Ionicons.font);
 
   const refresh = useCallback(() => {
     resolveActiveDb()
@@ -45,7 +53,7 @@ export default function App() {
             </ConfigProvider>
           </SQLiteProvider>
         ) : null}
-        {booted ? null : <BootOverlay />}
+        {booted && (fontsReady || fontError) ? null : <BootOverlay />}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

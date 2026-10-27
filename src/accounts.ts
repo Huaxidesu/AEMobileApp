@@ -32,8 +32,14 @@ function readAccount(id: string): ServerAccount | null {
   try {
     const raw = SecureStore.getItem(KEY_PREFIX + id);
     if (!raw) return null;
-    const acc = JSON.parse(raw) as ServerAccount;
-    return acc?.id ? acc : null;
+    const acc = JSON.parse(raw) as ServerAccount & { uuid?: string };
+    if (!acc?.id) return null;
+    // 2.1.0 之前字段叫 uuid（存的是玩家 UUID 首段），现在存 token。
+    // 老记录直接搬过来：值本来就不对（服务端已改随机 token），用户重新粘贴一次即可。
+    if (!acc.token && acc.uuid) acc.token = acc.uuid;
+    if (!acc.token) acc.token = '';
+    delete (acc as any).uuid;
+    return acc;
   } catch {
     return null;
   }
@@ -72,10 +78,10 @@ function seedAccount(): ServerAccount {
   return {
     id: makeId(),
     name: '',
-    scheme: SecureStore.getItem(LEGACY.scheme) ?? 'http',
+    scheme: 'tcp',
     ip: legacyIp || line.host,
     port: SecureStore.getItem(LEGACY.port) ?? line.port ?? DEFAULT_PORT,
-    uuid: SecureStore.getItem(LEGACY.uuid) ?? '',
+    token: SecureStore.getItem(LEGACY.uuid) ?? '',
     mainnet: parseMainnet(SecureStore.getItem(LEGACY.mainnet)),
     updatedAt: Date.now(),
   };
@@ -114,8 +120,8 @@ export function getActiveAccount(): ServerAccount {
 
 /** 当前账号对应的连接配置（其余屏幕只认这个） */
 export function loadActiveConfig(): ServerConfig {
-  const { scheme, ip, port, uuid, mainnet } = getActiveAccount();
-  return { scheme, ip, port, uuid, mainnet };
+  const { scheme, ip, port, token, mainnet } = getActiveAccount();
+  return { scheme, ip, port, token, mainnet };
 }
 
 /** 写入账号；不在索引里就补进去 */
@@ -132,10 +138,10 @@ export function createAccount(patch: Partial<ServerAccount> = {}): ServerAccount
   const acc: ServerAccount = {
     id: makeId(),
     name: '',
-    scheme: 'http',
+    scheme: 'tcp',
     ip: line.host,
     port: line.port,
-    uuid: '',
+    token: '',
     mainnet: null,
     updatedAt: Date.now(),
     ...patch,

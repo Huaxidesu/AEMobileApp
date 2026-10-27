@@ -1,4 +1,13 @@
-// 服务端接口层：协议类型 + 请求封装。配置的持久化在多账号模块（accounts.ts）里。
+// 服务端接口层：协议类型 + 请求封装。
+//
+// 2026-10-27 协议 3.0.0：传输从 HTTP + SSE 换成裸 TCP（阿里云按 Host 头拦 HTTP，
+// 裸 TCP 不受影响；顺带把 Spring/Tomcat 从 mod 里删掉了）。
+// 屏幕层只认这里的 op 名字，帧格式仍然是「全量 + 增量 + 心跳」，见 frames.ts。
+//
+// 契约：AEMobile/doc/传输协议与安全.md
+import { setClockOffset } from './auth';
+import { Stream, probeServer, requestOnce, tcp } from './net/conn';
+
 export interface AENetwork {
   dimid: number;
   x: number;
@@ -7,10 +16,15 @@ export interface AENetwork {
 }
 
 export interface ServerConfig {
+  /** 历史字段，协议 3.0.0 起恒为 'tcp'，只为兼容老账号记录保留 */
   scheme: string;
   ip: string;
   port: string;
-  uuid: string;
+  /**
+   * 访问令牌（26 字符 Base32）。放置监控器时由服务端自动生成、聊天栏显示一次。
+   * 不上网线，只用于本地计算 HMAC 签名。
+   */
+  token: string;
   mainnet: AENetwork | null;
 }
 
@@ -20,86 +34,95 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+/** mod 默认的 TCP 端口（config 里 [server] port 可改） */
 export const DEFAULT_PORT = '44444';
 
 export function isConfigComplete(cfg: ServerConfig): boolean {
-  return !!(cfg.ip && cfg.scheme && cfg.uuid && cfg.mainnet && cfg.mainnet.x != null);
+  return !!(cfg.ip && cfg.token && cfg.mainnet && cfg.mainnet.x != null);
 }
 
+/** 展示用的连接串 */
 export function baseUrl(cfg: ServerConfig): string {
-  return `${cfg.scheme}://${cfg.ip}:${cfg.port}`;
+  return cfg.ip ? `${cfg.ip}:${cfg.port}` : '';
 }
 
-export function apiUrl(cfg: ServerConfig, path: string, params: Record<string, string | number | boolean | undefined>): string {
-  const qs = Object.entries(params)
-    .filter(([, v]) => v !== undefined)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-    .join('&');
-  return `${baseUrl(cfg)}${path}${qs ? `?${qs}` : ''}`;
+// --------------------------------------------------------------- 请求
+
+/**
+ * 一次性请求。
+ *
+ * op 与旧 HTTP 端点的对应：
+ *   networks / itemsOnce / cpusOnce / detailsOnce / start / cancel / plan / mspt
+ */
+export async function request<T>(
+  cfg: ServerConfig,
+  op: string,
+  params?: Record<string, any>,
+  onProgress?: (body: any) => void,
+): Promise<ApiResponse<T>> {
+  // 一次性请求走独立短连接：不干扰屏幕里的订阅流（设置页用的是未保存的表单配置）
+  const res = await requestOnce<T>(cfg, op, params, onProgress);
+  return { succeed: res.ok, body: res.b as T, message: res.m };
 }
 
-export async function getJson<T>(cfg: ServerConfig, path: string, params?: Record<string, string | number | boolean | undefined>): Promise<ApiResponse<T>> {
-  const resp = await fetch(apiUrl(cfg, path, params));
-  return (await resp.json()) as ApiResponse<T>;
+/**
+ * 打开一条推送流。返回的对象是 EventSource 的形状（addEventListener / close），
+ * 事件：
+ *   'message' → { data: 帧对象 }，直接喂给 parseFrame
+ *   'error'   → { message, code?, xhrStatus? }（401 表示密码错）
+ *
+ * 断线重连在 net/conn.ts 里统一处理，重连后会自动续订并带 sid，
+ * 屏幕层不需要再自己写重试。
+ */
+export function openStream(
+  cfg: ServerConfig,
+  op: string,
+  params?: Record<string, any>,
+): Stream {
+  return tcp.subscribe(cfg, op, params);
 }
 
-export async function postForm<T>(cfg: ServerConfig, path: string, params: Record<string, string | number | boolean | undefined>): Promise<ApiResponse<T>> {
-  const body = Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v ?? ''))}`)
-    .join('&');
-  const resp = await fetch(apiUrl(cfg, path, {}), {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body,
-  });
-  return (await resp.json()) as ApiResponse<T>;
-}
-
-export function openSSE(cfg: ServerConfig, path: string, params: Record<string, string | number | boolean | undefined>, postBody?: Record<string, string | number | boolean | undefined>) {
-  // 按需动态引入，避免把 SSE 类型扩散到每个文件
-  const EventSource = require('react-native-sse').default;
-  const es = new EventSource(apiUrl(cfg, path, params), postBody
-    ? {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: Object.entries(postBody)
-          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v ?? ''))}`)
-          .join('&'),
-      }
-    : undefined);
-  return es;
-}
-
-// 测试连接：先 http 后 https，返回可用的 scheme，失败返回 null
-export async function testConnection(ip: string, port: string): Promise<string | null> {
-  for (const scheme of ['http', 'https']) {
-    try {
-      const resp = await fetch(`${scheme}://${ip}:${port}/AEMobileTest`, { method: 'GET' });
-      // mod 侧该端点返回 200；404 也说明端口通（旧版 mod），视作可用
-      if (resp.status === 200 || resp.status === 404) return scheme;
-    } catch {
-      // 尝试下一种 scheme
-    }
+/**
+ * 测试连接：只握手不鉴权（不需要密码），顺带对时。
+ * 返回服务器版本和本机时钟偏差（秒）。
+ */
+export async function testConnection(
+  ip: string,
+  port: string,
+): Promise<{ ok: boolean; ver?: string; offset?: number }> {
+  try {
+    const info = await probeServer(ip, port);
+    const offset = info.time > 0 ? info.time - Date.now() / 1000 : 0;
+    if (Math.abs(offset) < 3600) setClockOffset(offset);
+    return { ok: true, ver: info.ver, offset };
+  } catch {
+    return { ok: false };
   }
-  return null;
 }
 
-// 服务端数字格式化（与旧版一致：1024 进制 K/M/G/T）
+// 服务端数字格式化（1024 进制 K/M/G/T/P/E）
+// 补 P/E 的原因：AE2 的 CPU 容量上限接近 Long.MAX（9.2e18），
+// 只到 T 的话会输出 "8.39e+6T" 这种科学计数法，很难读。
 export function formatItemCount(itemCount: number): string {
-  if (itemCount < 10000) return itemCount.toString();
+  if (!Number.isFinite(itemCount)) return '0';
+  if (itemCount < 10000) return Math.round(itemCount).toString();
   if (itemCount < 1000000) return (itemCount / 1024).toPrecision(3) + 'K';
   if (itemCount < 1000000000) return (itemCount / 1048576).toPrecision(3) + 'M';
   if (itemCount < 1000000000000) return (itemCount / 1073741824).toPrecision(3) + 'G';
-  return (itemCount / 1099511627776).toPrecision(3) + 'T';
+  if (itemCount < 1125899906842624) return (itemCount / 1099511627776).toPrecision(3) + 'T';
+  if (itemCount < 1152921504606847000) return (itemCount / 1125899906842624).toPrecision(3) + 'P';
+  return (itemCount / 1152921504606847000).toPrecision(3) + 'E';
 }
 
 // ---- 协议类型 ----
+
+/** 客户端展示用的物品（由全量帧 + 增量帧拼出来） */
 export interface ItemStackResp {
   item_name: string;
   meta: number;
   count: number;
   craftable: boolean;
-  nbt?: string;
+  nbt?: string | null;
 }
 
 export interface CraftingCPUInfo {
@@ -134,3 +157,33 @@ export interface CraftPlan {
   plan: CraftTaskItem[];
   bytesUsed: number;
 }
+
+/**
+ * 推送帧信封（和 2.1.0 的 SSE 帧一模一样，只是外面多包了一层 TCP 帧）。
+ *
+ * - `f` 全量：`d` 是数组形式的条目，`n` 是稀疏 NBT（下标 → base64）
+ * - `d` 增量：`c` 变更 / `a` 新增 / `x` 删除
+ * - `k` 心跳：内容没变
+ * - `e` 错误
+ */
+export type SseFrame =
+  | { t: 'f'; sid: string; seq: number; d: any[]; n?: Record<string, string> }
+  | { t: 'd'; sid?: string; seq: number; c?: any[]; a?: any[]; x?: any[] }
+  | { t: 'k'; seq: number }
+  | { t: 'e'; m: string };
+
+export function parseFrame(data: unknown): SseFrame | null {
+  try {
+    const obj = typeof data === 'string' ? JSON.parse(data) : data;
+    if (obj && typeof obj === 'object' && typeof (obj as any).t === 'string') return obj as SseFrame;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function itemKey(name: string, meta: number): string {
+  return `${name}|${meta}`;
+}
+
+export { normalizeToken } from './auth';

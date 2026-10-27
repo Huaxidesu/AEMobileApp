@@ -8,7 +8,12 @@ export interface LoadedItem {
 }
 
 const itemCache = new Map<string, LoadedItem>();
-const CACHE_MAX = 4000;
+/**
+ * 缓存上限。每条会把图标以 **base64 字符串** 存在 JS 堆里（平均 1.7KB 原始 PNG →
+ * 约 2.3KB base64），4000 条就是 ~9MB 常驻。查库是主键索引，很快，
+ * 所以宁可让缓存小一点，滚动时多查几次。
+ */
+const CACHE_MAX = 800;
 
 function toBase64(bytes: Uint8Array): string {
   // 分段转换，避免 Function.apply 参数过长

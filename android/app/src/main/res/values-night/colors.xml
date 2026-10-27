@@ -1,1 +1,5 @@
-<resources/>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 深色模式下自适应图标的底色：跟 App 主色一致，避免白块刺眼 -->
+  <color name="iconBackground">#0B0E14</color>
+</resources>

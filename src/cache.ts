@@ -31,7 +31,7 @@ export interface CacheEntry<T> {
 
 /** 只按服务器区分的指纹，用于与主网无关的数据（如网络列表） */
 export function serverKey(cfg: ServerConfig): string {
-  return `${cfg.scheme}://${cfg.ip}:${cfg.port}#${(cfg.uuid || '').slice(0, 8)}`;
+  return `${cfg.ip}:${cfg.port}#${(cfg.token || '').slice(0, 8)}`;
 }
 
 /**

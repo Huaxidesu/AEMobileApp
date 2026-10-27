@@ -15,7 +15,7 @@ interface ConfigCtx {
 const Ctx = createContext<ConfigCtx>(null as any);
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<ServerConfig>({ scheme: 'http', ip: '', port: '44444', uuid: '', mainnet: null });
+  const [config, setConfig] = useState<ServerConfig>({ scheme: 'tcp', ip: '', port: '44444', token: '', mainnet: null });
   const [accountName, setAccountName] = useState('');
   const [ready, setReady] = useState(false);
 
