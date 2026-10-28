@@ -14,15 +14,27 @@ interface ConfigCtx {
 
 const Ctx = createContext<ConfigCtx>(null as any);
 
+/** 还没读到账号时的占位配置：地址/密码留空，界面会落到连接表单 */
+const EMPTY_CONFIG: ServerConfig = { scheme: 'tcp', ip: '', port: '44444', token: '', mainnet: null };
+
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<ServerConfig>({ scheme: 'tcp', ip: '', port: '44444', token: '', mainnet: null });
+  const [config, setConfig] = useState<ServerConfig>(EMPTY_CONFIG);
   const [accountName, setAccountName] = useState('');
   const [ready, setReady] = useState(false);
 
   const reload = useCallback(async () => {
-    setConfig(loadActiveConfig());
-    setAccountName(accountLabel(getActiveAccount()));
-    setReady(true);
+    // 读账号不能把整棵树卡住：出错就退到空配置（= 去连接表单），
+    // 否则 ready 永远是 false，RootNavigator 只剩一个空 View，看起来就是「黑屏」。
+    try {
+      setConfig(loadActiveConfig());
+      setAccountName(accountLabel(getActiveAccount()));
+    } catch (e) {
+      console.warn('[config] 读取账号失败', e);
+      setConfig(EMPTY_CONFIG);
+      setAccountName('');
+    } finally {
+      setReady(true);
+    }
   }, []);
 
   useEffect(() => {

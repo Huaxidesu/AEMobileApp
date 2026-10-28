@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -23,6 +23,8 @@ export default function App() {
   const [auxSig, setAuxSig] = useState('');
   /** 首帧 UI 出来之前一直盖着启动页，避免 SQLite 打开/导入期间露出空白 */
   const [booted, setBooted] = useState(false);
+  /** 打开图标库失败：必须显示出来，否则用户看到的是一片黑 */
+  const [dbError, setDbError] = useState<string | null>(null);
   /**
    * 图标字体必须显式预加载。
    * @expo/vector-icons 是在**第一次渲染某个图标时**才去加载 ttf 的，
@@ -36,13 +38,16 @@ export default function App() {
     resolveActiveDb()
       .then((name) => {
         clearDbCaches();
+        setDbError(null);
         setDbName(name);
         setAuxSig(getAuxSignature());
         setAuxReady(true);
-        // 没有图标库时不进主界面，启动页得在这里关掉（AppShell 不会挂载）
-        if (!name) setBooted(true);
       })
-      .catch(() => setDbName(null));
+      .catch((e) => {
+        // 判断失败时退回「没有图标库」，让用户能回到首次配置页重试
+        console.warn('[db] resolve failed', e);
+        setDbName(null);
+      });
   }, []);
 
   useEffect(() => {
@@ -50,27 +55,42 @@ export default function App() {
     return subscribeActiveDb(refresh);
   }, [refresh]);
 
+  const openDbFailed = useCallback((e: Error) => {
+    console.warn('[db] open failed', e);
+    setDbError(e?.message ?? String(e));
+  }, []);
+
+  /**
+   * 启动页要盖住两段空窗：字体没就绪，以及「已确定库名、但主界面还没挂好」。
+   * 后者包括 SQLite 打开 186MB 物品库的那几秒 —— 之前这段是纯黑屏，看着像崩了。
+   */
+  const showBoot = !(fontsReady || fontError) || (dbName !== null && !booted && !dbError);
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        {dbName === null ? (
-          // 没有图标库：先让用户导入配置包 / 填图标源，下载完再进主界面
-          <ConfigProvider>
-            <SetupScreen onDone={refresh} />
-          </ConfigProvider>
-        ) : dbName && auxReady ? (
-          <SQLiteProvider
-            key={`${dbName}|${auxSig}`}
-            databaseName={dbName}
-            onInit={attachAux}
-            onError={(e) => console.warn('[db] open failed', e)}
-          >
+        <Boundary>
+          {dbError ? (
+            <FailScreen message={dbError} onRetry={refresh} />
+          ) : dbName === null ? (
+            // 没有图标库：先让用户导入配置包 / 填图标源，下载完再进主界面
             <ConfigProvider>
-              <AppShell onReady={() => setBooted(true)} />
+              <SetupScreen onDone={refresh} />
             </ConfigProvider>
-          </SQLiteProvider>
-        ) : null}
-        {booted && (fontsReady || fontError) ? null : <BootOverlay />}
+          ) : dbName && auxReady ? (
+            <SQLiteProvider
+              key={`${dbName}|${auxSig}`}
+              databaseName={dbName}
+              onInit={attachAux}
+              onError={openDbFailed}
+            >
+              <ConfigProvider>
+                <AppShell onReady={() => setBooted(true)} />
+              </ConfigProvider>
+            </SQLiteProvider>
+          ) : null}
+        </Boundary>
+        {showBoot ? <BootOverlay /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -102,6 +122,51 @@ function BootOverlay() {
   );
 }
 
+/** 库打不开时的兜底页：给出原因和重试，而不是留一块黑屏 */
+function FailScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={styles.fail}>
+      <Ionicons name="alert-circle-outline" size={44} color={colors.accent} />
+      <Text style={styles.failTitle}>图标库打不开</Text>
+      <Text style={styles.failBody}>{message}</Text>
+      <Pressable style={styles.failBtn} onPress={onRetry}>
+        <Text style={styles.failBtnText}>重试</Text>
+      </Pressable>
+      <Text style={styles.failHint}>一直失败的话，去「设置 → 存储与缓存」清掉在线图标库，会回到首次使用页。</Text>
+    </View>
+  );
+}
+
+/**
+ * 渲染期异常的兜底：release 包里 React 出错只会留下一片黑，
+ * 这里至少把错误文本显示出来，方便反馈问题。
+ */
+class Boundary extends React.Component<{ children: React.ReactNode }, { err: Error | null }> {
+  state: { err: Error | null } = { err: null };
+
+  static getDerivedStateFromError(err: Error) {
+    return { err };
+  }
+
+  componentDidCatch(err: Error) {
+    console.warn('[ui] render error', err);
+  }
+
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <View style={styles.fail}>
+        <Ionicons name="bug-outline" size={44} color={colors.accent} />
+        <Text style={styles.failTitle}>界面出错了</Text>
+        <Text style={styles.failBody}>{this.state.err.message}</Text>
+        <Pressable style={styles.failBtn} onPress={() => this.setState({ err: null })}>
+          <Text style={styles.failBtnText}>重试</Text>
+        </Pressable>
+      </View>
+    );
+  }
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   boot: {
@@ -113,4 +178,24 @@ const styles = StyleSheet.create({
   },
   bootTitle: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: 2 },
   bootSub: { color: colors.textFaint, fontSize: 11, letterSpacing: 1 },
+  fail: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.l,
+    gap: spacing.m,
+  },
+  failTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
+  failBody: { color: colors.textDim, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  failBtn: {
+    paddingHorizontal: spacing.l,
+    paddingVertical: spacing.s,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  failBtnText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  failHint: { color: colors.textFaint, fontSize: 11, lineHeight: 17, textAlign: 'center' },
 });

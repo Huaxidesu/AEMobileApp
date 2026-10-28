@@ -71,16 +71,25 @@ function parseMainnet(raw: string | null): AENetwork | null {
   }
 }
 
+/**
+ * 默认线路：内置列表现在默认是空的（线路由服主的配置包/在线列表给），
+ * 所以这里不能直接取 `BUILTIN_SERVERS[0].host` —— 空数组时 undefined.host 会抛 TypeError。
+ */
+function defaultLine(): { host: string; port: string } {
+  const line = BUILTIN_SERVERS[0];
+  return { host: line?.host ?? '', port: line?.port ?? DEFAULT_PORT };
+}
+
 /** 默认账号：优先沿用旧版单配置，没有就指向默认线路（密码留空等玩家填） */
 function seedAccount(): ServerAccount {
   const legacyIp = SecureStore.getItem(LEGACY.ip) ?? '';
-  const line = BUILTIN_SERVERS[0];
+  const line = defaultLine();
   return {
     id: makeId(),
     name: '',
     scheme: 'tcp',
     ip: legacyIp || line.host,
-    port: SecureStore.getItem(LEGACY.port) ?? line.port ?? DEFAULT_PORT,
+    port: SecureStore.getItem(LEGACY.port) ?? line.port,
     token: SecureStore.getItem(LEGACY.uuid) ?? '',
     mainnet: parseMainnet(SecureStore.getItem(LEGACY.mainnet)),
     updatedAt: Date.now(),
@@ -134,7 +143,7 @@ export function upsertAccount(acc: ServerAccount): ServerAccount {
 }
 
 export function createAccount(patch: Partial<ServerAccount> = {}): ServerAccount {
-  const line = BUILTIN_SERVERS[0];
+  const line = defaultLine();
   const acc: ServerAccount = {
     id: makeId(),
     name: '',

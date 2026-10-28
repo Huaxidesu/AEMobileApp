@@ -271,7 +271,12 @@ export default function ItemsScreen({ navigation }: any) {
           style={styles.segBtn}
           onPress={() => {
             const all = kinds.item && kinds.fluid && kinds.essentia;
-            setKinds({ item: !all, fluid: !all, essentia: !all });
+            // 全开时收窄到「只看物品」，否则回到全选（不能把三个都设成 !all，那样一个都不剩）
+            setKinds(
+              all
+                ? { item: true, fluid: false, essentia: false }
+                : { item: true, fluid: true, essentia: true },
+            );
           }}
         >
           <Text style={styles.segText}>{kinds.item && kinds.fluid && kinds.essentia ? '只看物品' : '全选'}</Text>
