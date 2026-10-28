@@ -100,3 +100,6 @@ yarn-error.*
 .zed/
 # 端到端对拍的编译产物（由 tsc 生成）
 /mock/gen/
+
+# 编辑器 / 系统
+.vscode/
