@@ -78,11 +78,14 @@ yarn-error.*
 # AI 协作文档，仅本地使用
 /doc/
 
-# NEI 导出数据与重建中间产物，只提交 assets/itempanel.db
+# 图标库（几十~几百 MB，且是各模组的艺术作品，不进仓库；由在线更新分发）
+/assets/*.db
+
+# NEI 导出数据与重建中间产物
 /itempanel.csv
 /fluidcontainer.csv
 /itempanel_icons/
-/itempanel.db
+# /itempanel.db  # 已废弃：拆成 items/fluids/essentia 三个库
 
 # 本地日志
 /metro.log
