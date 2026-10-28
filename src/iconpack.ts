@@ -5,14 +5,15 @@ import * as SecureStore from 'expo-secure-store';
 import { openDatabaseAsync } from 'expo-sqlite';
 import { isValidHttpUrl, normalizeRepoUrl } from './urlutil';
 
-/** 随 APK 分发的内置库（assets/itempanel.db，首次启动由 SQLiteProvider 复制进来） */
-export const BUILTIN_DB = 'itempanel.db';
+/** 随 APK 分发的内置**物品**库（assets/items.db，首次启动由 SQLiteProvider 复制进来）。
+ *  流体 / 源质在 fluids.db、essentia.db，由 src/dbs.ts 复制并用 ATTACH 挂上。 */
+export const BUILTIN_DB = 'items.db';
 
 /**
- * 内置库的 sha256。重建 assets/itempanel.db 后必须同步改这里，
+ * 内置**物品**库（assets/items.db）的 sha256。重建后必须同步改这里，
  * 否则装完新 APK 还会提示"有更新"（buildiconpack.py 会把这个值打印出来）。
  */
-export const BUILTIN_ICON_SHA = 'e073b0ab6083322475f0ba4f9defe18d56b3ade18213e26940a2fa60b275e13d';
+export const BUILTIN_ICON_SHA = '91b8b40849bb968a442fedb80bc687b202ff88a79d7b019a1533cf475e53833e';
 
 /** 默认清单地址（自建 Gitea 的 ae/ 目录 raw 直链；可用 EXPO_PUBLIC_ICON_MANIFEST_URL 覆盖，便于换镜像/本地联调） */
 export const DEFAULT_MANIFEST_URL =

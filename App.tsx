@@ -12,6 +12,7 @@ import { ToastHost } from './src/toast';
 import { colors, spacing } from './src/theme';
 import { BUILTIN_DB, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
 import { clearDbCaches } from './src/db';
+import { attachAux, ensureAuxDbs } from './src/dbs';
 
 export default function App() {
   // 图标库可能被在线更新替换过：数据库名存 SecureStore，切换后靠 key 重新挂载 Provider
@@ -24,6 +25,14 @@ export default function App() {
    * 所以底栏会出现「先有文字、几百毫秒后图标才冒出来」的闪烁。
    */
   const [fontsReady, fontError] = useFonts(Ionicons.font);
+  /** fluids.db / essentia.db 就位后才能打开主库（要在同一个连接上 ATTACH） */
+  const [auxReady, setAuxReady] = useState(false);
+
+  useEffect(() => {
+    ensureAuxDbs()
+      .catch(() => {})
+      .then(() => setAuxReady(true));
+  }, []);
 
   const refresh = useCallback(() => {
     resolveActiveDb()
@@ -42,11 +51,12 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        {dbName ? (
+        {dbName && auxReady ? (
           <SQLiteProvider
             key={dbName}
             databaseName={dbName}
-            assetSource={dbName === BUILTIN_DB ? { assetId: require('./assets/itempanel.db') } : undefined}
+            assetSource={dbName === BUILTIN_DB ? { assetId: require('./assets/items.db') } : undefined}
+            onInit={attachAux}
           >
             <ConfigProvider>
               <AppShell onReady={() => setBooted(true)} />

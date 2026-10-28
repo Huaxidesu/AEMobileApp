@@ -36,6 +36,8 @@ export default function ItemsScreen({ navigation }: any) {
   const [keyword, setKeyword] = useState('');
   /** 防抖后的关键词：直接拿显示名过滤（物品/流体/源质都能搜到，不查库） */
   const [kwApplied, setKwApplied] = useState('');
+  /** 类型筛选：物品/流体/源质各自独立，可多选（默认全开） */
+  const [kinds, setKinds] = useState({ item: true, fluid: true, essentia: true });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** 当前列表来自缓存的写入时间；联网收到新帧后清空 */
@@ -159,6 +161,10 @@ export default function ItemsScreen({ navigation }: any) {
       // FlatList 会把它们当成同一项（只渲染一条，甚至全部丢掉）
       return { ...resolved, count: r.count, craftable: r.craftable, key: itemKey(r.item_name, r.meta, r.nbt) };
     });
+    // 类型筛选：三类互不影响，可以只留其中一两种
+    if (!kinds.item || !kinds.fluid || !kinds.essentia) {
+      list = list.filter((r) => (r.isFluid ? kinds.fluid : r.isEssentia ? kinds.essentia : kinds.item));
+    }
     // 按「显示名」过滤：物品用库里的 dname，流体/源质用解析出来的中文名，所以三类都能搜到
     if (kwApplied) {
       list = list.filter(
@@ -174,7 +180,7 @@ export default function ItemsScreen({ navigation }: any) {
       return r * dir;
     });
     return list;
-  }, [raw, kwApplied, sortKey, sortAsc]);
+  }, [raw, kwApplied, kinds, sortKey, sortAsc]);
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) => (
@@ -237,6 +243,39 @@ export default function ItemsScreen({ navigation }: any) {
             <Ionicons name="close-circle" size={17} color={colors.textFaint} />
           </TouchableOpacity>
         ) : null}
+      </View>
+
+      {/* 类型行：物品 / 流体 / 源质 各自独立开关（和下面的「可合成」并列，互不冲突） */}
+      <View style={styles.filterRow}>
+        {(
+          [
+            ['item', 'cube', '物品'],
+            ['fluid', 'water', '流体'],
+            ['essentia', 'flask', '源质'],
+          ] as const
+        ).map(([key, icon, label]) => {
+          const on = kinds[key];
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[styles.segBtn, on && styles.segBtnActive]}
+              onPress={() => setKinds((prev) => ({ ...prev, [key]: !prev[key] }))}
+            >
+              <Ionicons name={icon} size={13} color={on ? colors.accent : colors.textDim} />
+              <Text style={[styles.segText, on && { color: colors.accent }]}>{label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.segBtn}
+          onPress={() => {
+            const all = kinds.item && kinds.fluid && kinds.essentia;
+            setKinds({ item: !all, fluid: !all, essentia: !all });
+          }}
+        >
+          <Text style={styles.segText}>{kinds.item && kinds.fluid && kinds.essentia ? '只看物品' : '全选'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 过滤行 */}

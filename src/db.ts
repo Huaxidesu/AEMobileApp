@@ -1,8 +1,6 @@
 // 本地图标/名称查询缓存 + ae2fc 流体映射 + NBT 解析
 import { SQLiteDatabase } from 'expo-sqlite';
 var NBT = require('parsenbt-js');
-import { ASPECTS } from './aspects';
-import { fluidName } from './fluidNames';
 
 export interface LoadedItem {
   dname: string | null;
@@ -17,14 +15,20 @@ const itemCache = new Map<string, LoadedItem>();
  */
 const CACHE_MAX = 800;
 
-function toBase64(bytes: Uint8Array): string {
-  // 分段转换，避免 Function.apply 参数过长
-  let out = '';
+/**
+ * BLOB → base64。
+ * 注意：expo-sqlite 有时直接把 BLOB 当 base64 字符串返回（老库是这么用的），
+ * 有时返回 Uint8Array（ATTACH 进来的库就是这样），两种都要认。
+ */
+function toBase64(bytes: Uint8Array | string): string {
+  if (typeof bytes === 'string') return bytes;
+  let binary = '';
   const chunk = 8192;
   for (let i = 0; i < bytes.length; i += chunk) {
-    out += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)) as any);
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)) as any);
   }
-  return out;
+  // btoa 把二进制串真正编成 base64；没有的话退回原串（和以前行为一致）
+  return typeof btoa === 'function' ? btoa(binary) : binary;
 }
 
 export function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -96,23 +100,73 @@ export interface FluidRef {
 }
 
 const fluidCache = new Map<string, FluidRef | null>();
+/** 源质：tag → { 中文名, base64 图标 }（来自 essentia.db，ATTACH 成 essentia） */
+const aspectCache = new Map<string, { dname: string; icon: string | null } | null>();
+/** 流体中文名（fluids.db 的 fluid_name 表），查不到返回 null */
+const fluidNameCache = new Map<string, string | null>();
 
 /** 图标库被在线更新替换后必须调用，否则会继续命中旧库的图标/名称 */
 export function clearDbCaches(): void {
   itemCache.clear();
   fluidCache.clear();
+  aspectCache.clear();
+  fluidNameCache.clear();
+}
+
+/** 源质图标/名字：essentia.db 的 aspect 表（tag 统一小写） */
+export function lookupAspect(db: SQLiteDatabase, tag: string): { dname: string; icon: string | null } | null {
+  const key = tag.toLowerCase();
+  if (aspectCache.has(key)) return aspectCache.get(key)!;
+  let row: { dname: string; icon: Uint8Array | null } | null = null;
+  try {
+    row = db.getFirstSync<{ dname: string; icon: Uint8Array | null }>(
+      'select dname, icon from essentia.aspect where tag = $tag limit 1',
+      { $tag: key },
+    );
+  } catch {
+    // 辅助库没挂上：源质退回服务端给的英文名 + 问号图标
+  }
+  const ref = row
+    ? { dname: row.dname, icon: row.icon && row.icon.length ? toBase64(row.icon) : null }
+    : null;
+  aspectCache.set(key, ref);
+  return ref;
+}
+
+/** 流体中文名：fluids.db 的 fluid_name 表（GT 汉化的 Material 名） */
+export function lookupFluidName(db: SQLiteDatabase, fluid: string): string | null {
+  const key = fluid.toLowerCase();
+  if (fluidNameCache.has(key)) return fluidNameCache.get(key)!;
+  const base = key.replace(/^(molten|plasma|liquid|gas|fluid)\./i, '');
+  let row: { dname: string } | null = null;
+  try {
+    row = db.getFirstSync<{ dname: string }>(
+      'select dname from fluids.fluid_name where fluid = $f limit 1',
+      { $f: base },
+    );
+  } catch {
+    // 辅助库没挂上：交给上层用服务端给的英文名
+  }
+  let name = row?.dname ?? null;
+  if (name && /^molten\./i.test(key)) name = '熔融' + name;
+  else if (name && /^plasma\./i.test(key)) name = '等离子' + name;
+  fluidNameCache.set(key, name);
+  return name;
 }
 
 export function lookupFluid(db: SQLiteDatabase, fluidName: string): FluidRef | null {
   if (fluidCache.has(fluidName)) return fluidCache.get(fluidName)!;
-  const row = db.getFirstSync<{ item: string; meta: number; dname: string }>(
-    `select container_display_name as dname, item, meta
-     from fluid_container, item_panel
-     where item_panel.item_name = fluid_container.item
-       and fluid_container.meta = item_panel.item_meta
-       and fluid_container.fluid_name = $fluid limit 1`,
-    { $fluid: fluidName },
-  );
+  let row: { item: string; meta: number; dname: string } | null = null;
+  try {
+    row = db.getFirstSync<{ item: string; meta: number; dname: string }>(
+      `select container_display_name as dname, item, meta
+       from fluids.fluid_container
+       where fluid_container.fluid_name = $fluid limit 1`,
+      { $fluid: fluidName },
+    );
+  } catch {
+    // 辅助库没挂上：退化成纯颜色 + 水滴图标
+  }
   const ref: FluidRef | null = row
     ? {
         fluid: fluidName,
@@ -166,8 +220,8 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
       nbtobj = undefined;
     }
     const tag = nbtobj?.['comp>']?.['str>Aspect'] as string | undefined;
-    // 贴图键统一小写（GT 的源质贴图是大写文件名）
-    const info = tag ? ASPECTS[tag.toLowerCase()] : undefined;
+    // 贴图键统一小写（GT 的源质贴图是大写文件名），数据在 essentia.db
+    const info = tag ? lookupAspect(db, tag) : null;
     // 源质贴图是白色蒙版，颜色由服务端给的 Color（Aspect.getColor）决定，UI 用 tintColor 上色
     const c = readFluidColor(nbtobj);
     const tint = c != null ? `#${c.toString(16).padStart(6, '0')}` : null;
@@ -177,8 +231,8 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
         meta,
         nbt: raw.nbt,
         nbtobj,
-        dname: info.n,
-        icon: info.i,
+        dname: info.dname,
+        icon: info.icon,
         isEssentia: true,
         aspectTint: tint,
       };
@@ -186,7 +240,7 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
     const fallback = nbtobj?.['comp>']?.['str>Name'] as string | undefined;
     // 少数附属模组的要素没有贴图（custom1-5 / caelum / tabernus / terminus），
     // 用 TC4 的 _unknown 图标兜底，别显示成「禁止」占位
-    const unknown = ASPECTS['_unknown']?.i ?? null;
+    const unknown = lookupAspect(db, '_unknown')?.icon ?? null;
     return {
       name,
       meta,
@@ -219,7 +273,7 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
         dname = ref.dname;
       } else {
         // 名字优先级：GT 汉化的材料名 > 服务端给的英文名 > 流体 id
-        dname = fluidName(fluid) ?? readFluidDisplayName(nbtobj) ?? fluid;
+        dname = lookupFluidName(db, fluid) ?? readFluidDisplayName(nbtobj) ?? fluid;
       }
       const loadedFluid = lookupItem(db, name, meta);
       return {
