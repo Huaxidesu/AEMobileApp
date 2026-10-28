@@ -23,7 +23,7 @@ export default function ItemDetailScreen({ route, navigation }: any) {
   /** 用户中途返回：结果回来时直接丢弃，不要再跳页 */
   const abandonedRef = useRef(false);
 
-  const isFluid = resolved.original_name != null;
+  const isFluid = resolved.isFluid === true;
   const count = parseInt(countText, 10);
 
   async function generate() {
@@ -101,7 +101,7 @@ export default function ItemDetailScreen({ route, navigation }: any) {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={{ padding: spacing.l, gap: spacing.m }}>
         <View style={[card, { alignItems: 'center', padding: spacing.xl, gap: spacing.m }]}>
-          <ItemIcon uri={resolved.icon} size={80} />
+          <ItemIcon uri={resolved.icon} size={80} fluid={resolved.isFluid} fluidColor={resolved.fluidColor} />
           <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700', textAlign: 'center' }}>{resolved.dname ?? resolved.name}</Text>
           <View style={{ flexDirection: 'row', gap: spacing.s, flexWrap: 'wrap', justifyContent: 'center' }}>
             <Chip label={`当前存量 ${formatItemCount(raw.count)}`} tone="accent" icon="cube-outline" />

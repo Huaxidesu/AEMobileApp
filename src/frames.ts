@@ -45,12 +45,13 @@ export class ItemAccumulator {
         const [name, meta, count, craftable] = row;
         // 防御：服务端出 bug 时宁可少一条，也别让 null 流进 UI（会直接崩在 resolveItem）
         if (typeof name !== 'string') return;
-        this.map.set(itemKey(name, meta), {
+        const rowNbt = nbt[String(i)] ?? null;
+        this.map.set(itemKey(name, meta, rowNbt), {
           item_name: name,
           meta,
           count,
           craftable: !!craftable,
-          nbt: nbt[String(i)] ?? null,
+          nbt: rowNbt,
         });
       });
       this.sid = f.sid;
@@ -58,22 +59,23 @@ export class ItemAccumulator {
     } else if (kind === 'delta') {
       const f = frame as Extract<SseFrame, { t: 'd' }>;
       (f.c ?? []).forEach((row: any[]) => {
-        const [name, meta, count, craftable] = row;
+        const [name, meta, count, craftable, rowNbt] = row;
         if (typeof name !== 'string') return;
-        const k = itemKey(name, meta);
+        // 流体滴的 changed 行会带 NBT（否则分不清是哪种流体）
+        const k = itemKey(name, meta, rowNbt);
         const prev = this.map.get(k);
         this.map.set(k, {
           item_name: name,
           meta,
           count,
           craftable: !!craftable,
-          nbt: prev?.nbt ?? null,
+          nbt: rowNbt ?? prev?.nbt ?? null,
         });
       });
       (f.a ?? []).forEach((row: any[]) => {
         const [name, meta, count, craftable, nbt] = row;
         if (typeof name !== 'string') return;
-        this.map.set(itemKey(name, meta), {
+        this.map.set(itemKey(name, meta, nbt), {
           item_name: name,
           meta,
           count,
@@ -81,9 +83,11 @@ export class ItemAccumulator {
           nbt: nbt ?? null,
         });
       });
-      (f.x ?? []).forEach((row: any[]) => {
+      (f.x ?? []).forEach((row: any) => {
+        // 新服务端直接发 key 字符串（流体滴的 key 带 NBT）；兼容旧的 [name, meta]
+        if (typeof row === 'string') { this.map.delete(row); return; }
         if (typeof row?.[0] !== 'string') return;
-        this.map.delete(itemKey(row[0], row[1]));
+        this.map.delete(itemKey(row[0], row[1], row[2]));
       });
       if (f.sid) this.sid = f.sid;
       this.seq = f.seq;
@@ -102,7 +106,7 @@ export class ItemAccumulator {
   /** 从落盘缓存恢复（缓存存的是完整数组） */
   seed(list: ItemStackResp[]): void {
     this.map.clear();
-    list.forEach((it) => this.map.set(itemKey(it.item_name, it.meta), it));
+    list.forEach((it) => this.map.set(itemKey(it.item_name, it.meta, it.nbt), it));
   }
 }
 
@@ -230,9 +234,11 @@ export class TaskAccumulator {
           });
         }
       });
-      (f.x ?? []).forEach((row: any[]) => {
+      (f.x ?? []).forEach((row: any) => {
+        // 新服务端直接发 key 字符串（流体滴的 key 带 NBT）；兼容旧的 [name, meta]
+        if (typeof row === 'string') { this.map.delete(row); return; }
         if (typeof row?.[0] !== 'string') return;
-        this.map.delete(itemKey(row[0], row[1]));
+        this.map.delete(itemKey(row[0], row[1], row[2]));
       });
       if (f.sid) this.sid = f.sid;
       this.seq = f.seq;

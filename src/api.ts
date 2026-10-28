@@ -182,7 +182,19 @@ export function parseFrame(data: unknown): SseFrame | null {
   }
 }
 
-export function itemKey(name: string, meta: number): string {
+/** 流体滴在物品列表里的统一 name（AE2FC 约定），多条不同流体共用它 */
+export const FLUID_DROP = 'ae2fc:fluid_drop';
+/** 源质（神秘时代）在物品列表里的统一 name，多条不同要素共用它 */
+export const ESSENTIA = 'thaumicenergistics:essentia';
+
+/**
+ * 物品键。**流体滴必须带 NBT** —— 所有流体共用 `ae2fc:fluid_drop:0`，
+ * 只用 name|meta 做键的话它们会在 map 里互相覆盖，App 里永远只看到最后一条流体。
+ * 其它物品故意不带 NBT（否则几千个附魔剑会变成几千行）。
+ * 规则必须和服务端 StreamState.key 一致。
+ */
+export function itemKey(name: string, meta: number, nbt?: string | null): string {
+  if (nbt && (name === FLUID_DROP || name === ESSENTIA)) return `${name}|${meta}|${nbt}`;
   return `${name}|${meta}`;
 }
 

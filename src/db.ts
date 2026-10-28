@@ -1,6 +1,8 @@
 // 本地图标/名称查询缓存 + ae2fc 流体映射 + NBT 解析
 import { SQLiteDatabase } from 'expo-sqlite';
 var NBT = require('parsenbt-js');
+import { ASPECTS } from './aspects';
+import { fluidName } from './fluidNames';
 
 export interface LoadedItem {
   dname: string | null;
@@ -35,6 +37,36 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 export function readFluidName(nbtobj: any): string | undefined {
   try {
     return nbtobj?.['comp>']?.['str>Fluid'];
+  } catch {
+    return undefined;
+  }
+}
+
+/** 源质（神秘时代）在物品列表里的统一 name */
+export const ESSENTIA = 'thaumicenergistics:essentia';
+
+/** 服务端塞在流体 NBT 里的颜色（0xRRGGBB），App 用它画纯色流体图标 */
+export function readFluidColor(nbtobj: any): number | null {
+  try {
+    const c = nbtobj?.['comp>'];
+    if (!c) return null;
+    // 不写死 int>/short>：不同 NBT 解析器的类型前缀可能不一样
+    for (const k of Object.keys(c)) {
+      if (k.endsWith('>Color')) {
+        const v = c[k];
+        if (typeof v === 'number') return v & 0xffffff;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 服务端在流体滴 NBT 里额外塞的显示名（没有容器映射时兜底用） */
+export function readFluidDisplayName(nbtobj: any): string | undefined {
+  try {
+    return nbtobj?.['comp>']?.['str>Name'];
   } catch {
     return undefined;
   }
@@ -103,6 +135,12 @@ export interface ResolvedItem {
   nbtobj?: any;
   dname: string | null;
   icon: string | null;
+  /** 这一行是不是流体（ae2fc 流体滴），UI 用它决定要不要画水滴图标 */
+  isFluid?: boolean;
+  /** 这一行是不是源质（神秘时代要素），图标直接来自 aspects.ts */
+  isEssentia?: boolean;
+  /** 流体的颜色（0xRRGGBB），UI 画「纯色方块 + 水滴」用 */
+  fluidColor?: number | null;
 }
 
 export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: number; nbt?: string | null }): ResolvedItem {
@@ -112,6 +150,35 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
   let original_meta: number | undefined;
   let nbtobj: any;
   let dname: string | null = null;
+  /** 流体没有容器映射时的兜底显示名（服务端在 NBT 里带的 Name） */
+  let fluidDisplayName: string | null = null;
+  let isFluid = false;
+  let fluidColor: number | null = null;
+
+  // 源质：服务端发 thaumicenergistics:essentia + NBT {Aspect, Name}，
+  // 图标/中文名来自 TC4 jar 抽出来的 aspects.ts（50 个要素）
+  if (name === ESSENTIA && raw.nbt) {
+    try {
+      nbtobj = NBT.Reader(base64ToArrayBuffer(raw.nbt));
+    } catch {
+      nbtobj = undefined;
+    }
+    const tag = nbtobj?.['comp>']?.['str>Aspect'] as string | undefined;
+    const info = tag ? ASPECTS[tag] : undefined;
+    if (info) {
+      return {
+        name,
+        meta,
+        nbt: raw.nbt,
+        nbtobj,
+        dname: info.n,
+        icon: info.i,
+        isEssentia: true,
+      };
+    }
+    const fallback = nbtobj?.['comp>']?.['str>Name'] as string | undefined;
+    return { name, meta, nbt: raw.nbt, nbtobj, dname: fallback ?? tag ?? '源质', icon: null, isEssentia: true };
+  }
 
   if (name.includes('ae2fc') && raw.nbt) {
     try {
@@ -120,17 +187,48 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
       nbtobj = undefined;
     }
     const fluid = nbtobj ? readFluidName(nbtobj) : undefined;
+    isFluid = !!fluid;
     const ref = fluid ? lookupFluid(db, fluid) : null;
-    if (ref) {
+    if (fluid) {
+      // 流体一律用「纯色方块 + 水滴」当图标（和游戏里 AE 终端一致），不再借容器的图标
+      fluidColor = readFluidColor(nbtobj);
       original_name = name;
       original_meta = meta;
-      name = ref.containerItem;
-      meta = ref.containerMeta;
-      dname = ref.dname;
+      if (ref) {
+        name = ref.containerItem;
+        meta = ref.containerMeta;
+        dname = ref.dname;
+      } else {
+        // 名字优先级：GT 汉化的材料名 > 服务端给的英文名 > 流体 id
+        dname = fluidName(fluid) ?? readFluidDisplayName(nbtobj) ?? fluid;
+      }
+      const loadedFluid = lookupItem(db, name, meta);
+      return {
+        name,
+        meta,
+        original_name,
+        original_meta,
+        nbt: raw.nbt,
+        nbtobj,
+        dname: dname ?? loadedFluid.dname,
+        icon: null,
+        isFluid: true,
+        fluidColor,
+      };
     }
   }
   const loaded = lookupItem(db, name, meta);
-  return { name, meta, original_name, original_meta, nbt: raw.nbt, nbtobj, dname: dname ?? loaded.dname, icon: loaded.icon };
+  return {
+    name,
+    meta,
+    original_name,
+    original_meta,
+    nbt: raw.nbt,
+    nbtobj,
+    dname: dname ?? fluidDisplayName ?? loaded.dname,
+    icon: loaded.icon,
+    isFluid,
+  };
 }
 
 // 搜索：本地 db 按显示名模糊匹配，返回 "name:meta" 键集合

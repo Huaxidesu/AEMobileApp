@@ -184,7 +184,41 @@ export function StyledInput({
   );
 }
 
-export function ItemIcon({ uri, size = 40 }: { uri: string | null; size?: number }) {
+export function ItemIcon({
+  uri,
+  size = 40,
+  fluid = false,
+  fluidColor,
+}: {
+  uri: string | null;
+  size?: number;
+  fluid?: boolean;
+  /** 0xRRGGBB：流体用纯色方块 + 水滴，和游戏里 AE 终端一致 */
+  fluidColor?: number | null;
+}) {
+  if (!uri && fluid) {
+    const rgb = fluidColor != null ? fluidColor & 0xffffff : null;
+    const hex = rgb != null ? `#${rgb.toString(16).padStart(6, '0')}` : null;
+    // 浅色流体（GT 很多流体是白色）配深色水滴，否则图标糊成一片
+    const lum = rgb != null ? (0.299 * ((rgb >> 16) & 0xff) + 0.587 * ((rgb >> 8) & 0xff) + 0.114 * (rgb & 0xff)) / 255 : 0;
+    const glyph = rgb == null ? colors.accent : lum > 0.62 ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.92)';
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius.s,
+          backgroundColor: hex ?? colors.accentSoft,
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.12)',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name="water" size={size * 0.55} color={glyph} />
+      </View>
+    );
+  }
   return (
     <Image
       source={uri ? { uri: `data:image/png;base64,${uri}` } : barrier}

@@ -6,7 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
-import { ItemStackResp, openStream, formatItemCount, parseFrame } from '../api';
+import { ItemStackResp, openStream, formatItemCount, parseFrame, itemKey } from '../api';
 import type { Stream } from '../net/conn';
 import { ItemAccumulator, frameError } from '../frames';
 import { resolveItem, searchItemKeys, ResolvedItem } from '../db';
@@ -156,7 +156,9 @@ export default function ItemsScreen({ navigation }: any) {
   const rows: Row[] = useMemo(() => {
     let list = raw.map((r) => {
       const resolved = resolveItem(db, { name: r.item_name, meta: r.meta, nbt: r.nbt });
-      return { ...resolved, count: r.count, craftable: r.craftable, key: `${r.item_name}:${r.meta}` };
+      // key 必须带上 nbt：流体滴共用 ae2fc:fluid_drop:0，不带 nbt 的话 771 条流体全是重复 key，
+      // FlatList 会把它们当成同一项（只渲染一条，甚至全部丢掉）
+      return { ...resolved, count: r.count, craftable: r.craftable, key: itemKey(r.item_name, r.meta, r.nbt) };
     });
     if (filterKeys) list = list.filter((r) => filterKeys.has(`${r.original_name ?? r.name}:${r.original_meta ?? r.meta}`));
     const dir = sortAsc ? 1 : -1;
@@ -177,7 +179,7 @@ export default function ItemsScreen({ navigation }: any) {
         activeOpacity={0.7}
         onPress={() => navigation.navigate('ItemDetail', { item })}
       >
-        <ItemIcon uri={item.icon} size={40} />
+        <ItemIcon uri={item.icon} size={40} fluid={item.isFluid} fluidColor={item.fluidColor} />
         <View style={{ position: 'absolute', right: 6, bottom: 6 }}>
           <Text style={tileStyles.count}>{formatItemCount(item.count)}</Text>
         </View>
