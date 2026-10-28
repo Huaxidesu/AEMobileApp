@@ -1,6 +1,6 @@
 // 物品终端：搜索 + 过滤 + 排序 + 网格浏览
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,8 @@ import type { Stream } from '../net/conn';
 import { ItemAccumulator, frameError } from '../frames';
 import { resolveItem, ResolvedItem } from '../db';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
-import { colors, spacing, radius } from '../theme';
+import { themedStyles, useTheme, spacing, radius } from '../theme';
+import { useGrid } from '../gridprefs';
 import { Chip, EmptyState, StatusDot, CenterLoading, ItemIcon } from '../components';
 
 type SortKey = 'count' | 'name' | 'mod';
@@ -24,6 +25,9 @@ interface Row extends ResolvedItem {
 }
 
 export default function ItemsScreen({ navigation }: any) {
+  const { colors } = useTheme();
+  const { prefs, pageSize } = useGrid();
+  const win = useWindowDimensions();
   const db = useSQLiteContext();
   const { config } = useConfig();
   // 状态栏是透明的（内容画在它下面），顶部要自己让出高度
@@ -40,6 +44,8 @@ export default function ItemsScreen({ navigation }: any) {
   const [kinds, setKinds] = useState({ item: true, fluid: true, essentia: true });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** 当前页（0 起）；过滤/排序/每页容量一变就回到第一页 */
+  const [page, setPage] = useState(0);
   /** 当前列表来自缓存的写入时间；联网收到新帧后清空 */
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   const esRef = useRef<Stream | null>(null);
@@ -182,6 +188,10 @@ export default function ItemsScreen({ navigation }: any) {
     return list;
   }, [raw, kwApplied, kinds, sortKey, sortAsc]);
 
+  /** 网格宽度 → 单个格子宽度 → 图标尺寸（列数越多格子越小） */
+  const tileW = Math.max(24, (win.width - spacing.m * 2 - spacing.s * (prefs.columns - 1)) / prefs.columns);
+  const iconSize = Math.round(Math.max(14, Math.min(40, tileW * 0.52)));
+
   const renderItem = useCallback(
     ({ item }: { item: Row }) => (
       <TouchableOpacity
@@ -189,7 +199,7 @@ export default function ItemsScreen({ navigation }: any) {
         activeOpacity={0.7}
         onPress={() => navigation.navigate('ItemDetail', { item })}
       >
-        <ItemIcon uri={item.icon} size={40} fluid={item.isFluid} fluidColor={item.fluidColor} tint={item.aspectTint} />
+        <ItemIcon uri={item.icon} size={iconSize} fluid={item.isFluid} fluidColor={item.fluidColor} tint={item.aspectTint} />
         <View style={{ position: 'absolute', right: 6, bottom: 6 }}>
           <Text style={tileStyles.count}>{formatItemCount(item.count)}</Text>
         </View>
@@ -200,10 +210,22 @@ export default function ItemsScreen({ navigation }: any) {
         ) : null}
       </TouchableOpacity>
     ),
-    [],
+    [iconSize, navigation],
   );
 
-  const numColumns = 4;
+  const numColumns = prefs.columns;
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  /** 当前页要显示的物品：分页大小 = 列数 × 每页行数 */
+  const pageRows = useMemo(
+    () => rows.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [rows, safePage, pageSize],
+  );
+
+  // 换了筛选/排序/每页容量就回第一页，否则可能停在一个已经不存在的页码上
+  useEffect(() => {
+    setPage(0);
+  }, [kwApplied, kinds, sortKey, sortAsc, showAll, prefs.columns, prefs.rows]);
 
   return (
     <View style={styles.screen}>
@@ -222,9 +244,14 @@ export default function ItemsScreen({ navigation }: any) {
             </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={connect} style={styles.iconBtn}>
-          <Ionicons name="refresh" size={20} color={connected ? colors.textDim : colors.accent} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: spacing.s }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Layout')} style={styles.iconBtn} hitSlop={6}>
+            <Ionicons name="grid-outline" size={19} color={colors.textDim} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={connect} style={styles.iconBtn}>
+            <Ionicons name="refresh" size={20} color={connected ? colors.textDim : colors.accent} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 搜索栏 */}
@@ -327,25 +354,49 @@ export default function ItemsScreen({ navigation }: any) {
       ) : rows.length === 0 ? (
         <EmptyState icon="cube-outline" title="没有匹配的物品" subtitle={keyword ? '换个关键词试试' : 'ME 网络里没有存储物品'} />
       ) : (
-        <FlatList
-          key={`grid-${numColumns}`}
-          data={rows}
-          numColumns={numColumns}
-          keyExtractor={(r) => r.key}
-          renderItem={renderItem}
-          contentContainerStyle={{ padding: spacing.m, gap: spacing.s }}
-          columnWrapperStyle={{ gap: spacing.s }}
-          initialNumToRender={40}
-          maxToRenderPerBatch={40}
-          windowSize={7}
-          removeClippedSubviews
-        />
+        <View style={{ flex: 1 }}>
+          <FlatList
+            key={`grid-${numColumns}`}
+            style={{ flex: 1 }}
+            data={pageRows}
+            numColumns={numColumns}
+            keyExtractor={(r) => r.key}
+            renderItem={renderItem}
+            contentContainerStyle={{ padding: spacing.m, gap: spacing.s }}
+            columnWrapperStyle={{ gap: spacing.s }}
+            initialNumToRender={40}
+            maxToRenderPerBatch={40}
+            windowSize={7}
+            removeClippedSubviews
+          />
+          {pageCount > 1 ? (
+            <View style={styles.pager}>
+              <TouchableOpacity
+                style={[styles.pageBtn, safePage === 0 && styles.pageBtnOff]}
+                disabled={safePage === 0}
+                onPress={() => setPage(Math.max(0, safePage - 1))}
+              >
+                <Ionicons name="chevron-back" size={16} color={colors.textDim} />
+              </TouchableOpacity>
+              <Text style={styles.pageText}>
+                第 {safePage + 1} / {pageCount} 页 · 共 {rows.length} 个
+              </Text>
+              <TouchableOpacity
+                style={[styles.pageBtn, safePage >= pageCount - 1 && styles.pageBtnOff]}
+                disabled={safePage >= pageCount - 1}
+                onPress={() => setPage(Math.min(pageCount - 1, safePage + 1))}
+              >
+                <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -406,9 +457,32 @@ const styles = StyleSheet.create({
   },
   segBtnActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   segText: { color: colors.textDim, fontSize: 12, fontWeight: '600' },
-});
+  pager: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.m,
+    paddingHorizontal: spacing.l,
+    paddingVertical: spacing.s,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  pageBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.s,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pageBtnOff: { opacity: 0.35 },
+  pageText: { color: colors.textDim, fontSize: 12, fontWeight: '600' },
+}));
 
-const tileStyles = StyleSheet.create({
+const tileStyles = themedStyles((colors) => ({
   tile: {
     flex: 1,
     aspectRatio: 1,
@@ -426,9 +500,9 @@ const tileStyles = StyleSheet.create({
     color: colors.text,
     fontSize: 9,
     fontWeight: '700',
-    backgroundColor: 'rgba(11,14,20,0.85)',
+    backgroundColor: colors.isDark ? 'rgba(11,14,20,0.85)' : 'rgba(255,255,255,0.9)',
     paddingHorizontal: 4,
     borderRadius: 4,
     overflow: 'hidden',
   },
-});
+}));

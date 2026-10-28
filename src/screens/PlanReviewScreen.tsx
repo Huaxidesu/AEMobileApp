@@ -12,7 +12,7 @@ import { useConfig } from '../config';
 import { CraftPlan, CraftingCPUInfo, formatItemCount, request as apiRequest } from '../api';
 import { resolveItem } from '../db';
 import { readCache, scopeKey, writeCache } from '../cache';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, radius, spacing, card } from '../theme';
 import { Chip, EmptyState, ItemIcon, PrimaryButton, ProgressBar } from '../components';
 import { showToast } from '../toast';
 
@@ -42,6 +42,7 @@ const STATUS_LABEL: Record<CpuStatus, string> = {
 };
 
 export default function PlanReviewScreen({ route, navigation }: any) {
+  const { colors } = useTheme();
   const db = useSQLiteContext();
   const { config } = useConfig();
   const plan = route.params.plan as CraftPlan;
@@ -384,7 +385,7 @@ export default function PlanReviewScreen({ route, navigation }: any) {
   );
 }
 
-const rowStyles = StyleSheet.create({
+const rowStyles = themedStyles((colors) => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -393,9 +394,9 @@ const rowStyles = StyleSheet.create({
     marginTop: spacing.s,
   },
   num: { fontSize: 11, fontWeight: '600' },
-});
+}));
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   footer: { padding: spacing.l, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   mask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
@@ -428,4 +429,4 @@ const styles = StyleSheet.create({
     padding: spacing.m,
     backgroundColor: colors.surfaceAlt,
   },
-});
+}));

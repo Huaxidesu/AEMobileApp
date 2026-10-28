@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, radius, spacing, card } from '../theme';
 import { GhostButton, PrimaryButton, SettingsGroup, StyledInput } from '../components';
 import { formatBytes } from '../cache';
 import { showToast } from '../toast';
@@ -24,6 +24,7 @@ import {
 } from '../iconpack';
 
 export default function IconPackScreen() {
+  const { colors } = useTheme();
   const [installed, setInstalled] = useState(() => PACK_KINDS.map(getInstalledInfoFor));
   const [urlText, setUrlText] = useState(getManifestUrl());
   const [savedUrl, setSavedUrl] = useState(getManifestUrl());
@@ -216,7 +217,7 @@ export default function IconPackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   iconBox: {
     width: 34,
@@ -238,4 +239,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
   },
   hint: { color: colors.textFaint, fontSize: 11, lineHeight: 17, marginTop: spacing.s, marginHorizontal: spacing.xs },
-});
+}));

@@ -11,11 +11,12 @@ import type { Stream } from '../net/conn';
 import { CpuAccumulator, TaskAccumulator, frameError } from '../frames';
 import { resolveItem } from '../db';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, radius, spacing, card } from '../theme';
 import { Chip, EmptyState, ItemIcon, PrimaryButton, StatusDot, ProgressBar, CenterLoading } from '../components';
 import { showToast } from '../toast';
 
 export default function CraftScreen() {
+  const { colors } = useTheme();
   const db = useSQLiteContext();
   const { config } = useConfig();
   const insets = useSafeAreaInsets();
@@ -168,6 +169,7 @@ export default function CraftScreen() {
 }
 
 function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () => void }) {
+  const { colors } = useTheme();
   const db = useSQLiteContext();
   const { config } = useConfig();
   const [tasks, setTasks] = useState<CraftTaskItem[] | null>(null);
@@ -309,7 +311,7 @@ function CraftDetailModal({ cpu, onClose }: { cpu: CraftingCPUInfo; onClose: () 
   );
 }
 
-const idleStyles = StyleSheet.create({
+const idleStyles = themedStyles((colors) => ({
   idleBox: {
     width: 38,
     height: 38,
@@ -318,9 +320,9 @@ const idleStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -351,4 +353,4 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     maxHeight: '85%',
   },
-});
+}));

@@ -10,10 +10,13 @@ import { getInstalledInfo, getOnlinePackBytes } from '../iconpack';
 import { BUILTIN_SERVERS, getServerListUrl, loadCachedServerList } from '../serverlist';
 import { shortUrlLabel } from '../urlutil';
 import { APP_VERSION } from '../appinfo';
-import { colors, spacing } from '../theme';
+import { themedStyles, useTheme, spacing } from '../theme';
 import { SettingsGroup, SettingsRow, StatusDot } from '../components';
+import { useGrid } from '../gridprefs';
 
 export default function SettingsScreen({ navigation }: any) {
+  const { colors, mode } = useTheme();
+  const { prefs, pageSize } = useGrid();
   const { config, complete, accountName } = useConfig();
   const insets = useSafeAreaInsets();
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
@@ -71,6 +74,24 @@ export default function SettingsScreen({ navigation }: any) {
           />
         </SettingsGroup>
 
+        <SettingsGroup title="外观" footnote="主题与网格布局改完立刻生效，不用重启">
+          <SettingsRow
+            icon="grid-outline"
+            label="界面布局"
+            value={`${prefs.columns} 列 × ${prefs.rows} 行`}
+            detail={`每页 ${pageSize} 个 · 物品页右上角也有同一个入口`}
+            onPress={() => navigation.navigate('Layout')}
+          />
+          <SettingsRow
+            icon="color-palette"
+            label="主题"
+            value={mode === 'custom' ? '自定义' : mode === 'light' ? '浅色' : '深色'}
+            detail="浅色 / 深色 / 自定义配色"
+            onPress={() => navigation.navigate('Theme')}
+            divider={false}
+          />
+        </SettingsGroup>
+
         <SettingsGroup title="内容">
           <SettingsRow
             icon="images"
@@ -107,7 +128,7 @@ export default function SettingsScreen({ navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     paddingHorizontal: spacing.l,
@@ -116,4 +137,4 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
   subtitle: { color: colors.textFaint, fontSize: 11 },
-});
+}));

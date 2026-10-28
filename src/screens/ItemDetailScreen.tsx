@@ -5,13 +5,14 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useConfig } from '../config';
 import { CraftPlan, formatItemCount, request } from '../api';
 import { resolveItem } from '../db';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, radius, spacing, card } from '../theme';
 import { Chip, FieldLabel, ItemIcon, PrimaryButton, GhostButton, StyledInput } from '../components';
 import { showToast } from '../toast';
 
 const QUICK_COUNTS = [1, 64, 512, 4096];
 
 export default function ItemDetailScreen({ route, navigation }: any) {
+  const { colors } = useTheme();
   const db = useSQLiteContext();
   const { config } = useConfig();
   const raw = route.params.item as { item_name?: string; name?: string; meta: number; nbt?: string; count: number; craftable: boolean };
@@ -146,7 +147,7 @@ export default function ItemDetailScreen({ route, navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   quick: {
     flex: 1,
@@ -158,4 +159,4 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   quickText: { color: colors.textDim, fontSize: 12, fontWeight: '600' },
-});
+}));

@@ -7,13 +7,14 @@ import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../theme';
+import { themedStyles, useTheme, radius, spacing } from '../theme';
 import { GhostButton, PrimaryButton, StyledInput } from '../components';
 import { showToast } from '../toast';
 import { importBundleFromPicker } from '../bundle';
 import { downloadAndInstall, fetchManifest, getManifestUrl, normalizeManifestUrl, setManifestUrl } from '../iconpack';
 
 export default function SetupScreen({ onDone }: { onDone: () => void }) {
+  const { colors } = useTheme();
   const [url, setUrl] = useState(getManifestUrl());
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -120,7 +121,7 @@ export default function SetupScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   title: { color: colors.text, fontSize: 22, fontWeight: '700' },
   subtitle: { color: colors.textDim, fontSize: 13, textAlign: 'center', lineHeight: 20 },
@@ -137,4 +138,4 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s },
   progressText: { color: colors.textFaint, fontSize: 11 },
   hint: { color: colors.textFaint, fontSize: 11, lineHeight: 17, marginTop: spacing.m },
-});
+}));

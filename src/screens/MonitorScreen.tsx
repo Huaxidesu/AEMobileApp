@@ -7,7 +7,7 @@ import { useConfig } from '../config';
 import { openStream, request } from '../api';
 import type { Stream } from '../net/conn';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, Palette, radius, spacing, card } from '../theme';
 import { Chip, StatusDot } from '../components';
 
 /**
@@ -27,13 +27,14 @@ interface MonitorSnapshot {
   latest: [number, number, number];
 }
 
-function msptColor(v: number): string {
+function msptColor(v: number, colors: Palette): string {
   if (v < 30) return colors.ok;
   if (v < 50) return colors.warn;
   return colors.bad;
 }
 
 export default function MonitorScreen() {
+  const { colors } = useTheme();
   const { config } = useConfig();
   const insets = useSafeAreaInsets();
   const [connected, setConnected] = useState(false);
@@ -208,8 +209,8 @@ export default function MonitorScreen() {
           )}
           <View style={{ flexDirection: 'row', gap: spacing.s, marginTop: spacing.m }}>
             {stats.map((s) => (
-              <View key={s.label} style={[statStyles.box, { borderColor: msptColor(s.value) }]}>
-                <Text style={[statStyles.value, { color: msptColor(s.value) }]}>{s.value ? s.value.toFixed(1) : '--'}</Text>
+              <View key={s.label} style={[statStyles.box, { borderColor: msptColor(s.value, colors) }]}>
+                <Text style={[statStyles.value, { color: msptColor(s.value, colors) }]}>{s.value ? s.value.toFixed(1) : '--'}</Text>
                 <Text style={statStyles.label}>{s.label}均值</Text>
               </View>
             ))}
@@ -228,7 +229,7 @@ export default function MonitorScreen() {
   );
 }
 
-const statStyles = StyleSheet.create({
+const statStyles = themedStyles((colors) => ({
   box: {
     flex: 1,
     alignItems: 'center',
@@ -239,9 +240,9 @@ const statStyles = StyleSheet.create({
   },
   value: { fontSize: 17, fontWeight: '800' },
   label: { color: colors.textFaint, fontSize: 10, marginTop: 2 },
-});
+}));
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -261,4 +262,4 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-});
+}));

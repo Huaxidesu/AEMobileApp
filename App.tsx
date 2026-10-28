@@ -10,12 +10,30 @@ import RootNavigator from './src/navigation';
 import SetupScreen from './src/screens/SetupScreen';
 import { ConfigProvider, useConfig } from './src/config';
 import { ToastHost } from './src/toast';
-import { colors, spacing } from './src/theme';
+import { themedStyles, useTheme, currentPalette, spacing } from './src/theme';
+import { ThemeProvider } from './src/theme';
+import { GridProvider } from './src/gridprefs';
 import { getAuxSignature, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
 import { clearDbCaches } from './src/db';
 import { attachAux } from './src/dbs';
 
+/** 根组件只负责挂 Provider：主题与布局偏好要在任何界面（含启动页）之前就绪 */
 export default function App() {
+  return (
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <GridProvider>
+            <AppBody />
+          </GridProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+function AppBody() {
+  const { colors } = useTheme();
   // 图标库可能被在线更新替换过：数据库名存 SecureStore，切换后靠 key 重新挂载 Provider
   /** undefined = 还在判断；null = 没有任何物品库（要走首次配置） */
   const [dbName, setDbName] = useState<string | null | undefined>(undefined);
@@ -67,9 +85,8 @@ export default function App() {
   const showBoot = !(fontsReady || fontError) || (dbName !== null && !booted && !dbError);
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <SafeAreaProvider>
-        <Boundary>
+    <View style={styles.container}>
+      <Boundary>
           {dbError ? (
             <FailScreen message={dbError} onRetry={refresh} />
           ) : dbName === null ? (
@@ -89,14 +106,14 @@ export default function App() {
               </ConfigProvider>
             </SQLiteProvider>
           ) : null}
-        </Boundary>
-        {showBoot ? <BootOverlay /> : null}
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+      </Boundary>
+      {showBoot ? <BootOverlay /> : null}
+    </View>
   );
 }
 
 function AppShell({ onReady }: { onReady: () => void }) {
+  const { colors } = useTheme();
   const { ready } = useConfig();
   useEffect(() => {
     if (ready) onReady();
@@ -104,7 +121,7 @@ function AppShell({ onReady }: { onReady: () => void }) {
   return (
     <>
       {/* 状态栏不透明：内容永远不会滚到状态栏底下；新版 Android 强制边到边时由各屏的 insets 兜底 */}
-      <StatusBar style="light" translucent={false} backgroundColor={colors.bg} />
+      <StatusBar style={colors.isDark ? 'light' : 'dark'} translucent={false} backgroundColor={colors.bg} />
       <RootNavigator />
       <ToastHost />
     </>
@@ -113,6 +130,7 @@ function AppShell({ onReady }: { onReady: () => void }) {
 
 /** 启动页：深色底 + 字标 + 转圈，与原生 splash 同色，衔接起来像一次连续启动 */
 function BootOverlay() {
+  const { colors } = useTheme();
   return (
     <View style={styles.boot} pointerEvents="none">
       <Text style={styles.bootTitle}>AEMobile</Text>
@@ -124,6 +142,7 @@ function BootOverlay() {
 
 /** 库打不开时的兜底页：给出原因和重试，而不是留一块黑屏 */
 function FailScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { colors } = useTheme();
   return (
     <View style={styles.fail}>
       <Ionicons name="alert-circle-outline" size={44} color={colors.accent} />
@@ -154,6 +173,7 @@ class Boundary extends React.Component<{ children: React.ReactNode }, { err: Err
 
   render() {
     if (!this.state.err) return this.props.children;
+    const colors = currentPalette();
     return (
       <View style={styles.fail}>
         <Ionicons name="bug-outline" size={44} color={colors.accent} />
@@ -167,7 +187,8 @@ class Boundary extends React.Component<{ children: React.ReactNode }, { err: Err
   }
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
+  root: { flex: 1 },
   container: { flex: 1, backgroundColor: colors.bg },
   boot: {
     ...StyleSheet.absoluteFillObject,
@@ -198,4 +219,4 @@ const styles = StyleSheet.create({
   },
   failBtnText: { color: colors.text, fontSize: 13, fontWeight: '600' },
   failHint: { color: colors.textFaint, fontSize: 11, lineHeight: 17, textAlign: 'center' },
-});
+}));

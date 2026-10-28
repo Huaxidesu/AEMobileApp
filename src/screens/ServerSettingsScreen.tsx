@@ -19,11 +19,12 @@ import {
 } from '../accounts';
 import { ServerEntry, entryForHost, fetchServerList, loadCachedServerList, mergeServers } from '../serverlist';
 import { readCache, serverKey, writeCache } from '../cache';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, radius, spacing, card } from '../theme';
 import { Chip, FieldLabel, GhostButton, PrimaryButton, SettingsGroup, StatusDot, StyledInput } from '../components';
 import { showToast } from '../toast';
 
 export default function ServerSettingsScreen({ navigation }: any) {
+  const { colors } = useTheme();
   const { reload } = useConfig();
   const insets = useSafeAreaInsets();
 
@@ -428,7 +429,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   divider: { borderBottomWidth: 1, borderBottomColor: colors.border },
   accRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingHorizontal: spacing.m, paddingVertical: 12 },
@@ -463,4 +464,4 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     paddingBottom: spacing.xxl,
   },
-});
+}));

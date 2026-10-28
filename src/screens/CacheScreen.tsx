@@ -5,13 +5,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { CACHE_CATEGORY_LABEL, CacheCategory, CacheSummary, clearCache, formatBytes, summarizeCache } from '../cache';
 import { getInstalledInfo, getOnlinePackBytes, removeOnlinePacks } from '../iconpack';
-import { colors, spacing, card } from '../theme';
+import { themedStyles, useTheme, spacing, card } from '../theme';
 import { GhostButton, PrimaryButton, SettingsGroup } from '../components';
 import { showToast } from '../toast';
 
 const ORDER: CacheCategory[] = ['items', 'cpus', 'details', 'mspt', 'networks', 'servers'];
 
 export default function CacheScreen() {
+  const { colors } = useTheme();
   const [summary, setSummary] = useState<CacheSummary | null>(null);
   const [packBytes, setPackBytes] = useState<number | null>(null);
   const [installed, setInstalled] = useState(getInstalledInfo());
@@ -131,8 +132,8 @@ export default function CacheScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.m, paddingVertical: 12 },
   divider: { borderBottomWidth: 1, borderBottomColor: colors.border },
-});
+}));

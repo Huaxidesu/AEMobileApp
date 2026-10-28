@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, spacing } from './theme';
+import { themedStyles, useTheme, Palette, radius, spacing } from './theme';
 
 type ToastKind = 'ok' | 'bad' | 'info';
 interface ToastData {
@@ -18,13 +18,11 @@ export function showToast(msg: string, kind: ToastKind = 'info') {
   listener?.({ msg, kind, key: ++seq });
 }
 
-const KIND_COLOR: Record<ToastKind, string> = {
-  ok: colors.ok,
-  bad: colors.bad,
-  info: colors.accent,
-};
+const kindColor = (kind: ToastKind, colors: Palette): string =>
+  kind === 'ok' ? colors.ok : kind === 'bad' ? colors.bad : colors.accent;
 
 export function ToastHost() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<ToastData | null>(null);
   const anim = useRef(new Animated.Value(0)).current;
@@ -62,7 +60,7 @@ export function ToastHost() {
         },
       ]}
     >
-      <View style={[styles.card, { borderLeftColor: KIND_COLOR[data.kind] }]}>
+      <View style={[styles.card, { borderLeftColor: kindColor(data.kind, colors) }]}>
         <Text style={styles.text} numberOfLines={3}>
           {data.msg}
         </Text>
@@ -71,7 +69,7 @@ export function ToastHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   wrap: {
     position: 'absolute',
     top: 56,
@@ -95,4 +93,4 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   text: { color: colors.text, fontSize: 14 },
-});
+}));

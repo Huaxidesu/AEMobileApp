@@ -10,7 +10,7 @@ import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
 import { GridComponent } from 'echarts/components';
 import { SVGRenderer, SvgChart } from '@wuba/react-native-echarts';
-import { colors, spacing } from '../theme';
+import { themedStyles, useTheme, spacing } from '../theme';
 
 echarts.use([SVGRenderer, LineChart, GridComponent]);
 
@@ -22,6 +22,7 @@ export interface MsptPoint {
 }
 
 export default function MonitorChart({ points }: { points: MsptPoint[] }) {
+  const { colors } = useTheme();
   const surfaceRef = useRef<any>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
@@ -30,7 +31,7 @@ export default function MonitorChart({ points }: { points: MsptPoint[] }) {
 
   useEffect(() => {
     if (!surfaceRef.current) return;
-    const chart = echarts.init(surfaceRef.current, 'dark', {
+    const chart = echarts.init(surfaceRef.current, colors.isDark ? 'dark' : undefined, {
       renderer: 'svg',
       width: chartW,
       height: chartH,
@@ -52,7 +53,7 @@ export default function MonitorChart({ points }: { points: MsptPoint[] }) {
       chart.dispose();
       chartRef.current = null;
     };
-  }, []);
+  }, [colors, chartW, chartH]);
 
   useEffect(() => {
     chartRef.current?.setOption({

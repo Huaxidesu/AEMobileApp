@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, card } from '../theme';
+import { themedStyles, useTheme, radius, spacing, card } from '../theme';
 import { Chip, GhostButton, PrimaryButton, SettingsGroup, StyledInput } from '../components';
 import { formatAgo } from '../cache';
 import { showToast } from '../toast';
@@ -21,6 +21,7 @@ import {
 import { prettyUrl } from '../urlutil';
 
 export default function ServerListScreen() {
+  const { colors } = useTheme();
   const [entries, setEntries] = useState<ServerEntry[]>(() => mergeServers([]));
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   const [urlText, setUrlText] = useState(getServerListUrl());
@@ -141,7 +142,7 @@ export default function ServerListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   iconBox: {
     width: 34,
@@ -154,4 +155,4 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.m, paddingHorizontal: spacing.m, paddingVertical: 12 },
   divider: { borderBottomWidth: 1, borderBottomColor: colors.border },
   hint: { color: colors.textFaint, fontSize: 11, lineHeight: 17, marginTop: spacing.m, marginHorizontal: spacing.xs },
-});
+}));

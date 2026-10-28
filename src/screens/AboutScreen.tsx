@@ -4,10 +4,11 @@ import { Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { APP_VERSION, REPO_APP, REPO_MOD } from '../appinfo';
 import { getManifestUrl } from '../iconpack';
-import { colors, radius, spacing } from '../theme';
+import { themedStyles, useTheme, radius, spacing } from '../theme';
 import { SettingsGroup, SettingsRow } from '../components';
 
 export default function AboutScreen() {
+  const { colors } = useTheme();
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
@@ -60,7 +61,7 @@ export default function AboutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   logo: { width: 84, height: 84, borderRadius: radius.l },
   intro: {
@@ -70,4 +71,4 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.xs,
   },
-});
+}));

@@ -3,9 +3,10 @@ import React from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { barrier } from './assets';
-import { colors, radius, spacing, card } from './theme';
+import { themedStyles, useTheme, radius, spacing, card } from './theme';
 
 export function StatusDot({ ok, size = 8 }: { ok: boolean; size?: number }) {
+  const { colors } = useTheme();
   return (
     <View
       style={{
@@ -32,6 +33,7 @@ export function Chip({
   tone?: 'neutral' | 'ok' | 'bad' | 'warn' | 'accent' | 'accent2';
   icon?: keyof typeof Ionicons.glyphMap;
 }) {
+  const { colors } = useTheme();
   const bg = { neutral: colors.surfaceAlt, ok: colors.okSoft, bad: colors.badSoft, warn: colors.warnSoft, accent: colors.accentSoft, accent2: colors.accent2Soft }[tone];
   const fg = { neutral: colors.textDim, ok: colors.ok, bad: colors.bad, warn: colors.warn, accent: colors.accent, accent2: colors.accent2 }[tone];
   return (
@@ -67,11 +69,12 @@ export function Segmented<T extends string>({
   );
 }
 
-export function ProgressBar({ ratio, tone = colors.accent, height = 6 }: { ratio: number; tone?: string; height?: number }) {
+export function ProgressBar({ ratio, tone, height = 6 }: { ratio: number; tone?: string; height?: number }) {
+  const { colors } = useTheme();
   const pct = Math.max(0, Math.min(1, ratio));
   return (
     <View style={[barStyles.track, { height }]}>
-      <View style={[barStyles.fill, { width: `${pct * 100}%`, backgroundColor: tone }]} />
+      <View style={[barStyles.fill, { width: `${pct * 100}%`, backgroundColor: tone ?? colors.accent }]} />
     </View>
   );
 }
@@ -81,6 +84,7 @@ export function Card({ children, style }: { children: React.ReactNode; style?: a
 }
 
 export function EmptyState({ icon, title, subtitle }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle?: string }) {
+  const { colors } = useTheme();
   return (
     <View style={emptyStyles.wrap}>
       <Ionicons name={icon} size={52} color={colors.textFaint} />
@@ -91,6 +95,7 @@ export function EmptyState({ icon, title, subtitle }: { icon: keyof typeof Ionic
 }
 
 export function CenterLoading({ text }: { text?: string }) {
+  const { colors } = useTheme();
   return (
     <View style={emptyStyles.wrap}>
       <ActivityIndicator color={colors.accent} size="large" />
@@ -114,6 +119,7 @@ export function PrimaryButton({
   loading?: boolean;
   icon?: keyof typeof Ionicons.glyphMap;
 }) {
+  const { colors } = useTheme();
   const bg = tone === 'accent' ? colors.accent : colors.bad;
   return (
     <TouchableOpacity
@@ -138,6 +144,7 @@ export function GhostButton({
   disabled?: boolean;
   icon?: keyof typeof Ionicons.glyphMap;
 }) {
+  const { colors } = useTheme();
   return (
     <TouchableOpacity disabled={disabled} onPress={onPress} style={[btnStyles.ghost, { opacity: disabled ? 0.4 : 1 }]}>
       {icon ? <Ionicons name={icon} size={16} color={colors.textDim} /> : null}
@@ -165,6 +172,7 @@ export function StyledInput({
   multiline?: boolean;
   autoCorrect?: boolean;
 }) {
+  const { colors } = useTheme();
   return (
     <View style={inputStyles.wrap}>
       <TextInput
@@ -199,6 +207,7 @@ export function ItemIcon({
   /** 给白色蒙版贴图上色（源质图标就是这种） */
   tint?: string | null;
 }) {
+  const { colors } = useTheme();
   if (!uri && fluid) {
     const rgb = fluidColor != null ? fluidColor & 0xffffff : null;
     const hex = rgb != null ? `#${rgb.toString(16).padStart(6, '0')}` : null;
@@ -232,6 +241,7 @@ export function ItemIcon({
 }
 
 export function FieldLabel({ text }: { text: string }) {
+  const { colors } = useTheme();
   return <Text style={{ color: colors.textDim, fontSize: 12, marginBottom: spacing.s, marginTop: spacing.m }}>{text}</Text>;
 }
 
@@ -268,6 +278,7 @@ export function SettingsRow({
   divider?: boolean;
   disabled?: boolean;
 }) {
+  const { colors } = useTheme();
   const body = (
     <View style={[groupStyles.row, divider && groupStyles.divider, disabled && { opacity: 0.45 }]}>
       {icon ? (
@@ -301,7 +312,7 @@ export function SettingsRow({
   );
 }
 
-const chipStyles = StyleSheet.create({
+const chipStyles = themedStyles((colors) => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,9 +323,9 @@ const chipStyles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   text: { fontSize: 11, fontWeight: '600' },
-});
+}));
 
-const segStyles = StyleSheet.create({
+const segStyles = themedStyles((colors) => ({
   wrap: {
     flexDirection: 'row',
     backgroundColor: colors.surfaceAlt,
@@ -326,20 +337,20 @@ const segStyles = StyleSheet.create({
   active: { backgroundColor: colors.surfaceHigh },
   text: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
   activeText: { color: colors.accent },
-});
+}));
 
-const barStyles = StyleSheet.create({
+const barStyles = themedStyles((colors) => ({
   track: { backgroundColor: colors.surfaceHigh, borderRadius: radius.full, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: radius.full },
-});
+}));
 
-const emptyStyles = StyleSheet.create({
+const emptyStyles = themedStyles((colors) => ({
   wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.m, padding: spacing.xxl },
   title: { color: colors.textDim, fontSize: 15, fontWeight: '600' },
   subtitle: { color: colors.textFaint, fontSize: 13, textAlign: 'center' },
-});
+}));
 
-const btnStyles = StyleSheet.create({
+const btnStyles = themedStyles((colors) => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -361,9 +372,9 @@ const btnStyles = StyleSheet.create({
     borderColor: colors.border,
   },
   ghostText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
-});
+}));
 
-const inputStyles = StyleSheet.create({
+const inputStyles = themedStyles((colors) => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -374,9 +385,9 @@ const inputStyles = StyleSheet.create({
     paddingHorizontal: spacing.m,
   },
   input: { flex: 1, color: colors.text, fontSize: 15, paddingVertical: 11 },
-});
+}));
 
-const groupStyles = StyleSheet.create({
+const groupStyles = themedStyles((colors) => ({
   title: {
     color: colors.textFaint,
     fontSize: 11,
@@ -405,4 +416,4 @@ const groupStyles = StyleSheet.create({
   label: { color: colors.text, fontSize: 15, fontWeight: '600' },
   detail: { color: colors.textFaint, fontSize: 11, marginTop: 2, lineHeight: 15 },
   value: { color: colors.textDim, fontSize: 13, maxWidth: 170, textAlign: 'right' },
-});
+}));
