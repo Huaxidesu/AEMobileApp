@@ -8,6 +8,7 @@
 import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
 import { SQLiteDatabase } from 'expo-sqlite';
+import { auxDbPath, builtinName, getActiveName, type PackKind } from './iconpack';
 
 // ATTACH 要的是真实路径，不能带 file:// 前缀（FileSystem.documentDirectory 是 URI）
 const DB_DIR_URI = `${FileSystem.documentDirectory}SQLite/`;
@@ -57,13 +58,21 @@ export async function ensureAuxDbs(): Promise<void> {
   }
 }
 
-/** 挂到主连接上（幂等；SQLiteProvider 的 onInit 里调用） */
+/** 挂到主连接上（幂等；SQLiteProvider 的 onInit 里调用）。
+ *  在线更新过的库优先，没更新过就用随包内置那份。 */
 export async function attachAux(db: SQLiteDatabase): Promise<void> {
   for (const name of AUX_DBS) {
+    const kind = name as PackKind;
     try {
-      await db.execAsync(`ATTACH DATABASE '${DB_DIR}${name}.db' AS ${name}`);
+      await db.execAsync(`ATTACH DATABASE '${auxDbPath(kind)}' AS ${name}`);
     } catch {
       // 已经挂过，或文件缺失（查询会走兜底：图标空白、名字用服务端给的英文名）
     }
   }
+}
+
+/** 辅助库有没有在线包（供设置页显示） */
+export function auxIsOnline(kind: PackKind): boolean {
+  const active = getActiveName(kind);
+  return !!active && active !== builtinName(kind);
 }

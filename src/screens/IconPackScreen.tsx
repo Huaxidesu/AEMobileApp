@@ -9,18 +9,22 @@ import { showToast } from '../toast';
 import {
   downloadAndInstall,
   fetchManifest,
-  getInstalledInfo,
+  getInstalledInfoFor,
   getManifestUrl,
   hasUpdate,
   isCustomManifestUrl,
   isValidManifestUrl,
+  PACK_KINDS,
+  PACK_LABEL,
+  packInfo,
+  pendingKinds,
   RemoteManifest,
-  restoreBuiltin,
+  restoreAllBuiltin,
   setManifestUrl,
 } from '../iconpack';
 
 export default function IconPackScreen() {
-  const [installed, setInstalled] = useState(getInstalledInfo());
+  const [installed, setInstalled] = useState(() => PACK_KINDS.map(getInstalledInfoFor));
   const [urlText, setUrlText] = useState(getManifestUrl());
   const [savedUrl, setSavedUrl] = useState(getManifestUrl());
   const [custom, setCustom] = useState(isCustomManifestUrl());
@@ -58,7 +62,13 @@ export default function IconPackScreen() {
     try {
       const m = await fetchManifest(url);
       setManifest(m);
-      showToast(hasUpdate(m) ? `发现新图标库 ${m.icons.version}` : '图标库已是最新', 'ok');
+      const pending = pendingKinds(m);
+      showToast(
+        pending.length
+          ? `发现更新：${pending.map((k) => PACK_LABEL[k]).join('、')}库`
+          : '三个库都已是最新',
+        'ok',
+      );
     } catch (e: any) {
       showToast(e?.message ?? '检查更新失败', 'bad');
     } finally {
@@ -71,9 +81,12 @@ export default function IconPackScreen() {
     setInstalling(true);
     setProgress(0);
     try {
-      const { version } = await downloadAndInstall(manifest, { onProgress: (r) => setProgress(r) });
-      setInstalled(getInstalledInfo());
-      showToast(`图标库已更新到 ${version}`, 'ok');
+      const { updated, version } = await downloadAndInstall(manifest, { onProgress: (r) => setProgress(r) });
+      setInstalled(PACK_KINDS.map(getInstalledInfoFor));
+      showToast(
+        updated.length ? `已更新 ${updated.map((k) => PACK_LABEL[k]).join('、')}库（${version}）` : '没有需要更新的库',
+        'ok',
+      );
     } catch (e: any) {
       showToast(e?.message ?? '更新失败', 'bad');
     } finally {
@@ -83,41 +96,55 @@ export default function IconPackScreen() {
   }
 
   function restoreIcons() {
-    restoreBuiltin();
-    setInstalled(getInstalledInfo());
-    showToast('已恢复内置图标库', 'ok');
+    restoreAllBuiltin();
+    setInstalled(PACK_KINDS.map(getInstalledInfoFor));
+    showToast('三个库都已恢复内置', 'ok');
   }
 
   const updateAvailable = manifest ? hasUpdate(manifest) : false;
+  const pending = manifest ? pendingKinds(manifest) : [];
 
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
-        {/* 当前库 */}
+        {/* 三个库各自的版本 */}
         <View style={[card, { padding: spacing.m, marginBottom: spacing.l, gap: spacing.s }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.m }}>
             <View style={styles.iconBox}>
               <Ionicons name="images" size={18} color={colors.accent} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>
-                {installed.version ? `在线版 ${installed.version}` : '内置版（随安装包）'}
-              </Text>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>图标库</Text>
               <Text style={{ color: colors.textFaint, fontSize: 11, marginTop: 2 }}>
-                {installed.size ? formatBytes(installed.size) : '图标与显示名，浏览时不走网络'}
+                物品 / 流体 / 源质 三个库分开更新，只下载变了的那一个
               </Text>
             </View>
           </View>
-          {manifest ? (
-            <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16 }}>
-              远端 {manifest.icons.version} · {formatBytes(manifest.icons.size)} · {manifest.icons.rows} 条
-              {manifest.note ? `\n${manifest.note}` : ''}
-            </Text>
-          ) : (
-            <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16 }}>
-              图标库可在线更新，换 GTNH 版本不必重装 APK。只比对 sha256，不按版本号排序。
-            </Text>
-          )}
+          {PACK_KINDS.map((kind, i) => {
+            const info = installed[i];
+            const remote = manifest ? packInfo(manifest, kind) : null;
+            const isPending = pending.includes(kind);
+            return (
+              <View
+                key={kind}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.s, marginTop: 2 }}
+              >
+                <Text style={{ color: colors.textDim, fontSize: 12, width: 34 }}>{PACK_LABEL[kind]}</Text>
+                <Text style={{ color: colors.text, fontSize: 12, flex: 1 }}>
+                  {info.version ? `在线 ${info.version}` : '内置'}
+                  {info.size ? ` · ${formatBytes(info.size)}` : ''}
+                </Text>
+                {isPending && remote ? (
+                  <Text style={{ color: colors.accent, fontSize: 11 }}>可更新 → {remote.version}</Text>
+                ) : null}
+              </View>
+            );
+          })}
+          <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16, marginTop: spacing.s }}>
+            {manifest
+              ? `远端 ${manifest.updated}${manifest.note ? ` · ${manifest.note}` : ''}`
+              : '换 GTNH 版本不必重装 APK，只比对 sha256，不按版本号排序。'}
+          </Text>
         </View>
 
         {/* 更新源 */}
@@ -172,7 +199,7 @@ export default function IconPackScreen() {
                 </View>
               ) : null}
             </View>
-            {installed.version ? (
+            {installed.some((i) => i.version) ? (
               <TouchableOpacity onPress={restoreIcons} disabled={installing} style={[styles.dangerRow, installing && { opacity: 0.4 }]}>
                 <Ionicons name="refresh" size={16} color={colors.textDim} />
                 <Text style={{ color: colors.textDim, fontSize: 14, fontWeight: '600' }}>恢复内置图标库</Text>

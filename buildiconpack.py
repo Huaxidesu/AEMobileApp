@@ -1,13 +1,15 @@
-"""把 assets/itempanel.db 打包成在线更新用的图标包（原库 + gzip + 版本清单）。
+"""把三个图标库打包成在线更新用的产物（原库 + gzip + 版本清单）。
 
-产物结构（推送到 Gitea 后 App 从这里拉）：
-  <out>/version.json            版本清单：版本号、sha256、大小、行数
-  <out>/icons/itempanel.db      原库，App 直接下载（原生流式写盘，无需解压）
-  <out>/icons/itempanel.db.gz   压缩版（110MB → 48MB），留给桌面端/以后的原生解压
+2026-10-28 起拆成三个库，清单也分开写：
+  <out>/version.json           { schema:2, items:{...}, fluids:{...}, essentia:{...} }
+  <out>/icons/items.db         物品库（186MB）
+  <out>/icons/fluids.db        流体库（216KB）
+  <out>/icons/essentia.db      源质库（180KB）
+每个库都有 sha256/size/rows，App 可以只下载变了的那个。
 
 用法：
   python buildiconpack.py --out "D:/Develop/Game/update/dsmgtnhupdate/ae"
-  python buildiconpack.py --out ... --version 2026.10.26-2 --note "补 3 个空图标"
+  python buildiconpack.py --out ... --version 2026.10.28-1 --note "补矿石图标"
 
 App 侧判定规则：比对清单里的 sha256 与本地已安装库的 sha256，不同即可更新；
 version 只用于人看/日志，不参与比较（避免版本号排序踩坑）。
@@ -23,7 +25,10 @@ import sys
 import time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DB = os.path.join(BASE, "assets", "itempanel.db")
+ASSETS = os.path.join(BASE, "assets")
+DEFAULT_ITEMS = os.path.join(ASSETS, "items.db")
+DEFAULT_FLUIDS = os.path.join(ASSETS, "fluids.db")
+DEFAULT_ESSENTIA = os.path.join(ASSETS, "essentia.db")
 
 
 def sha256Of(path):
@@ -34,77 +39,94 @@ def sha256Of(path):
     return h.hexdigest()
 
 
+def packOne(name, path, outDir, version, counts):
+    """把一个库复制进 icons/ 并返回清单条目"""
+    if not os.path.isfile(path):
+        return None
+    rawSize = os.path.getsize(path)
+    digest = sha256Of(path)
+    target = os.path.join(outDir, "icons", "%s.db" % name)
+    if os.path.abspath(target) != os.path.abspath(path):
+        with open(path, "rb") as src, open(target, "wb") as dst:
+            for chunk in iter(lambda: src.read(4 * 1024 * 1024), b""):
+                dst.write(chunk)
+    gzPath = target + ".gz"
+    with open(path, "rb") as src, gzip.GzipFile(gzPath, "wb", compresslevel=6, mtime=0) as dst:
+        for chunk in iter(lambda: src.read(1024 * 1024), b""):
+            dst.write(chunk)
+    info = {
+        "version": version,
+        "sha256": digest,
+        "size": rawSize,
+        "file": "icons/%s.db" % name,
+        "gzFile": "icons/%s.db.gz" % name,
+        "gzSize": os.path.getsize(gzPath),
+    }
+    info.update(counts.get(name, {}))
+    return info
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=DEFAULT_DB, help="源 sqlite（默认 assets/itempanel.db）")
+    ap.add_argument("--items", default=DEFAULT_ITEMS, help="物品库（默认 assets/items.db）")
+    ap.add_argument("--fluids", default=DEFAULT_FLUIDS, help="流体库（默认 assets/fluids.db）")
+    ap.add_argument("--essentia", default=DEFAULT_ESSENTIA, help="源质库（默认 assets/essentia.db）")
     ap.add_argument("--out", required=True, help="更新仓库里的输出目录，如 .../dsmgtnhupdate/ae")
     ap.add_argument("--version", default=None, help="版本号，默认用当天日期 -N")
     ap.add_argument("--note", default="", help="更新说明，展示给 App")
     args = ap.parse_args()
 
-    if not os.path.isfile(args.db):
-        print("[中止] 找不到 %s" % args.db)
+    if not os.path.isfile(args.items):
+        print("[中止] 找不到 %s" % args.items)
         sys.exit(1)
-
-    db = sqlite3.connect(args.db)
-    rows = db.execute("select count(*) from item_panel").fetchone()[0]
-    keys = db.execute("select count(*) from (select distinct item_name, item_meta from item_panel)").fetchone()[0]
-    fluids = db.execute("select count(*) from fluid_container").fetchone()[0]
-    db.close()
 
     version = args.version or time.strftime("%Y.%m.%d") + "-1"
     outDir = args.out
-    iconDir = os.path.join(outDir, "icons")
-    os.makedirs(iconDir, exist_ok=True)
+    os.makedirs(os.path.join(outDir, "icons"), exist_ok=True)
 
-    rawSize = os.path.getsize(args.db)
-    digest = sha256Of(args.db)
-
-    # 原库：App 直接下载，省掉客户端解压
-    rawPath = os.path.join(iconDir, "itempanel.db")
-    if os.path.abspath(rawPath) != os.path.abspath(args.db):
-        with open(args.db, "rb") as src, open(rawPath, "wb") as dst:
-            for chunk in iter(lambda: src.read(4 * 1024 * 1024), b""):
-                dst.write(chunk)
-
-    t = time.time()
-    gzPath = os.path.join(iconDir, "itempanel.db.gz")
-    tmpPath = gzPath + ".tmp"
-    # mtime=0 让同一份输入产出同一个字节流，便于判断"是否真的变了"
-    with open(args.db, "rb") as src, gzip.GzipFile(tmpPath, "wb", compresslevel=6, mtime=0) as dst:
-        for chunk in iter(lambda: src.read(1024 * 1024), b""):
-            dst.write(chunk)
-    os.replace(tmpPath, gzPath)
-    gzSize = os.path.getsize(gzPath)
+    counts = {}
+    db = sqlite3.connect(args.items)
+    counts["items"] = {
+        "rows": db.execute("select count(*) from item_panel").fetchone()[0],
+        "keys": db.execute(
+            "select count(*) from (select distinct item_name, item_meta from item_panel)").fetchone()[0],
+    }
+    db.close()
+    for name, path, sql in (("fluids", args.fluids, "select count(*) from fluid_container"),
+                            ("essentia", args.essentia, "select count(*) from aspect")):
+        try:
+            c = sqlite3.connect(path)
+            counts[name] = {"rows": c.execute(sql).fetchone()[0]}
+            c.close()
+        except Exception:
+            counts[name] = {}
 
     manifest = {
-        "schema": 1,
+        "schema": 2,
         "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "note": args.note,
-        "icons": {
-            "version": version,
-            "sha256": digest,
-            "size": rawSize,
-            "file": "icons/itempanel.db",
-            "rows": rows,
-            "keys": keys,
-            "fluids": fluids,
-            "gzFile": "icons/itempanel.db.gz",
-            "gzSize": gzSize,
-        },
     }
+    for name, path in (("items", args.items), ("fluids", args.fluids), ("essentia", args.essentia)):
+        info = packOne(name, path, outDir, version, counts)
+        if info:
+            manifest[name] = info
+    # 老版本 App 只认 icons 字段，指到物品库，别让它们看到空清单
+    if "items" in manifest:
+        manifest["icons"] = manifest["items"]
+
     manifestPath = os.path.join(outDir, "version.json")
     with open(manifestPath, "w", encoding="utf-8", newline="\n") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
         f.write("\n")
 
     print("版本     %s" % version)
-    print("未压缩   %.1f MB → 压缩 %.1f MB（%.0f%%，耗时 %.0fs）"
-          % (rawSize / 1048576, gzSize / 1048576, gzSize / rawSize * 100, time.time() - t))
-    print("内容     %d 行 / %d 键 / %d 流体" % (rows, keys, fluids))
-    print("sha256   %s" % digest)
-    print("提示     若这份库要随 APK 分发，记得把 src/iconpack.ts 的 BUILTIN_ICON_SHA 改成上面的值")
-    print("产物     %s  +  %s" % (manifestPath, gzPath))
+    for name in ("items", "fluids", "essentia"):
+        if name in manifest:
+            i = manifest[name]
+            print("  %-8s %.1f MB → gz %.1f MB  sha256 %s  %s"
+                  % (name, i["size"] / 1048576, i["gzSize"] / 1048576, i["sha256"][:12], i.get("rows", "")))
+    print("提示     物品库随 APK 分发时，把 src/iconpack.ts 的 BUILTIN_ICON_SHA 改成 items 的 sha256")
+    print("产物     %s" % manifestPath)
 
 
 main()

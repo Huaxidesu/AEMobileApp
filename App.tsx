@@ -10,13 +10,15 @@ import RootNavigator from './src/navigation';
 import { ConfigProvider, useConfig } from './src/config';
 import { ToastHost } from './src/toast';
 import { colors, spacing } from './src/theme';
-import { BUILTIN_DB, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
+import { BUILTIN_DB, getAuxSignature, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
 import { clearDbCaches } from './src/db';
 import { attachAux, ensureAuxDbs } from './src/dbs';
 
 export default function App() {
   // 图标库可能被在线更新替换过：数据库名存 SecureStore，切换后靠 key 重新挂载 Provider
   const [dbName, setDbName] = useState<string | null>(null);
+  /** 辅助库（流体/源质）换过也要重挂 Provider，否则 ATTACH 还是旧的 */
+  const [auxSig, setAuxSig] = useState('');
   /** 首帧 UI 出来之前一直盖着启动页，避免 SQLite 打开/导入期间露出空白 */
   const [booted, setBooted] = useState(false);
   /**
@@ -39,6 +41,7 @@ export default function App() {
       .then((name) => {
         clearDbCaches();
         setDbName(name);
+        setAuxSig(getAuxSignature());
       })
       .catch(() => setDbName(BUILTIN_DB));
   }, []);
@@ -53,7 +56,7 @@ export default function App() {
       <SafeAreaProvider>
         {dbName && auxReady ? (
           <SQLiteProvider
-            key={dbName}
+            key={`${dbName}|${auxSig}`}
             databaseName={dbName}
             assetSource={dbName === BUILTIN_DB ? { assetId: require('./assets/items.db') } : undefined}
             onInit={attachAux}
