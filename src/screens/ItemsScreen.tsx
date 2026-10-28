@@ -183,7 +183,7 @@ export default function ItemsScreen({ navigation }: any) {
         activeOpacity={0.7}
         onPress={() => navigation.navigate('ItemDetail', { item })}
       >
-        <ItemIcon uri={item.icon} size={40} fluid={item.isFluid} fluidColor={item.fluidColor} />
+        <ItemIcon uri={item.icon} size={40} fluid={item.isFluid} fluidColor={item.fluidColor} tint={item.aspectTint} />
         <View style={{ position: 'absolute', right: 6, bottom: 6 }}>
           <Text style={tileStyles.count}>{formatItemCount(item.count)}</Text>
         </View>

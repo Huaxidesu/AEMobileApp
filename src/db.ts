@@ -141,6 +141,8 @@ export interface ResolvedItem {
   isEssentia?: boolean;
   /** 流体的颜色（0xRRGGBB），UI 画「纯色方块 + 水滴」用 */
   fluidColor?: number | null;
+  /** 源质的颜色（CSS 色值），UI 用它给白色蒙版贴图上色 */
+  aspectTint?: string | null;
 }
 
 export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: number; nbt?: string | null }): ResolvedItem {
@@ -166,6 +168,9 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
     const tag = nbtobj?.['comp>']?.['str>Aspect'] as string | undefined;
     // 贴图键统一小写（GT 的源质贴图是大写文件名）
     const info = tag ? ASPECTS[tag.toLowerCase()] : undefined;
+    // 源质贴图是白色蒙版，颜色由服务端给的 Color（Aspect.getColor）决定，UI 用 tintColor 上色
+    const c = readFluidColor(nbtobj);
+    const tint = c != null ? `#${c.toString(16).padStart(6, '0')}` : null;
     if (info) {
       return {
         name,
@@ -175,6 +180,7 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
         dname: info.n,
         icon: info.i,
         isEssentia: true,
+        aspectTint: tint,
       };
     }
     const fallback = nbtobj?.['comp>']?.['str>Name'] as string | undefined;
@@ -189,6 +195,7 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
       dname: fallback ?? tag ?? '源质',
       icon: unknown,
       isEssentia: true,
+      aspectTint: tint,
     };
   }
 

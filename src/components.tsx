@@ -189,12 +189,15 @@ export function ItemIcon({
   size = 40,
   fluid = false,
   fluidColor,
+  tint,
 }: {
   uri: string | null;
   size?: number;
   fluid?: boolean;
   /** 0xRRGGBB：流体用纯色方块 + 水滴，和游戏里 AE 终端一致 */
   fluidColor?: number | null;
+  /** 给白色蒙版贴图上色（源质图标就是这种） */
+  tint?: string | null;
 }) {
   if (!uri && fluid) {
     const rgb = fluidColor != null ? fluidColor & 0xffffff : null;
@@ -222,7 +225,7 @@ export function ItemIcon({
   return (
     <Image
       source={uri ? { uri: `data:image/png;base64,${uri}` } : barrier}
-      style={{ width: size, height: size, borderRadius: radius.s }}
+      style={{ width: size, height: size, borderRadius: radius.s, tintColor: tint ?? undefined }}
       resizeMode="contain"
     />
   );

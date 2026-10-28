@@ -22,6 +22,7 @@ interface Row {
   /** 流体行（没有物品图标，用滴水图标兜底） */
   isFluid: boolean;
   fluidColor?: number | null;
+  aspectTint?: string | null;
   dname: string | null;
   missing: number;
   numberPresent: number;
@@ -55,6 +56,7 @@ export default function PlanReviewScreen({ route, navigation }: any) {
           icon: r.icon,
           isFluid: r.isFluid === true,
           fluidColor: r.fluidColor ?? null,
+          aspectTint: r.aspectTint ?? null,
           dname: r.dname ?? t.name,
           missing: t.missing,
           numberPresent: t.numberPresent,
@@ -257,7 +259,7 @@ export default function PlanReviewScreen({ route, navigation }: any) {
             <Chip label={section.title} tone={section.tone} />
             {section.data.map((r) => (
               <View key={r.key} style={[card, rowStyles.row]}>
-                <ItemIcon uri={r.icon} size={34} fluid={r.isFluid} fluidColor={r.fluidColor} />
+                <ItemIcon uri={r.icon} size={34} fluid={r.isFluid} fluidColor={r.fluidColor} tint={r.aspectTint} />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={{ color: colors.text, fontSize: 13 }} numberOfLines={1}>
                     {r.dname}
