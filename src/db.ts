@@ -164,7 +164,8 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
       nbtobj = undefined;
     }
     const tag = nbtobj?.['comp>']?.['str>Aspect'] as string | undefined;
-    const info = tag ? ASPECTS[tag] : undefined;
+    // 贴图键统一小写（GT 的源质贴图是大写文件名）
+    const info = tag ? ASPECTS[tag.toLowerCase()] : undefined;
     if (info) {
       return {
         name,
@@ -177,7 +178,18 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
       };
     }
     const fallback = nbtobj?.['comp>']?.['str>Name'] as string | undefined;
-    return { name, meta, nbt: raw.nbt, nbtobj, dname: fallback ?? tag ?? '源质', icon: null, isEssentia: true };
+    // 少数附属模组的要素没有贴图（custom1-5 / caelum / tabernus / terminus），
+    // 用 TC4 的 _unknown 图标兜底，别显示成「禁止」占位
+    const unknown = ASPECTS['_unknown']?.i ?? null;
+    return {
+      name,
+      meta,
+      nbt: raw.nbt,
+      nbtobj,
+      dname: fallback ?? tag ?? '源质',
+      icon: unknown,
+      isEssentia: true,
+    };
   }
 
   if (name.includes('ae2fc') && raw.nbt) {

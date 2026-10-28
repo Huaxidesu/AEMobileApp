@@ -9,7 +9,7 @@ import { useConfig } from '../config';
 import { ItemStackResp, openStream, formatItemCount, parseFrame, itemKey } from '../api';
 import type { Stream } from '../net/conn';
 import { ItemAccumulator, frameError } from '../frames';
-import { resolveItem, searchItemKeys, ResolvedItem } from '../db';
+import { resolveItem, ResolvedItem } from '../db';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { colors, spacing, radius } from '../theme';
 import { Chip, EmptyState, StatusDot, CenterLoading, ItemIcon } from '../components';
@@ -34,7 +34,8 @@ export default function ItemsScreen({ navigation }: any) {
   const [sortAsc, setSortAsc] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('count');
   const [keyword, setKeyword] = useState('');
-  const [filterKeys, setFilterKeys] = useState<Set<string> | null>(null);
+  /** 防抖后的关键词：直接拿显示名过滤（物品/流体/源质都能搜到，不查库） */
+  const [kwApplied, setKwApplied] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** 当前列表来自缓存的写入时间；联网收到新帧后清空 */
@@ -142,14 +143,12 @@ export default function ItemsScreen({ navigation }: any) {
 
   // 搜索防抖
   useEffect(() => {
-    const kw = keyword.trim();
+    const kw = keyword.trim().toLowerCase();
     if (!kw) {
-      setFilterKeys(null);
+      setKwApplied('');
       return;
     }
-    const t = setTimeout(() => {
-      searchItemKeys(db, kw).then(setFilterKeys).catch(() => setFilterKeys(null));
-    }, 250);
+    const t = setTimeout(() => setKwApplied(kw), 200);
     return () => clearTimeout(t);
   }, [keyword]);
 
@@ -160,7 +159,12 @@ export default function ItemsScreen({ navigation }: any) {
       // FlatList 会把它们当成同一项（只渲染一条，甚至全部丢掉）
       return { ...resolved, count: r.count, craftable: r.craftable, key: itemKey(r.item_name, r.meta, r.nbt) };
     });
-    if (filterKeys) list = list.filter((r) => filterKeys.has(`${r.original_name ?? r.name}:${r.original_meta ?? r.meta}`));
+    // 按「显示名」过滤：物品用库里的 dname，流体/源质用解析出来的中文名，所以三类都能搜到
+    if (kwApplied) {
+      list = list.filter(
+        (r) => (r.dname ?? '').toLowerCase().includes(kwApplied) || r.name.toLowerCase().includes(kwApplied),
+      );
+    }
     const dir = sortAsc ? 1 : -1;
     list.sort((a, b) => {
       let r = 0;
@@ -170,7 +174,7 @@ export default function ItemsScreen({ navigation }: any) {
       return r * dir;
     });
     return list;
-  }, [raw, filterKeys, sortKey, sortAsc]);
+  }, [raw, kwApplied, sortKey, sortAsc]);
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) => (
