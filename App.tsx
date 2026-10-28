@@ -7,16 +7,18 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import RootNavigator from './src/navigation';
+import SetupScreen from './src/screens/SetupScreen';
 import { ConfigProvider, useConfig } from './src/config';
 import { ToastHost } from './src/toast';
 import { colors, spacing } from './src/theme';
-import { BUILTIN_DB, getAuxSignature, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
+import { getAuxSignature, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
 import { clearDbCaches } from './src/db';
-import { attachAux, ensureAuxDbs } from './src/dbs';
+import { attachAux } from './src/dbs';
 
 export default function App() {
   // 图标库可能被在线更新替换过：数据库名存 SecureStore，切换后靠 key 重新挂载 Provider
-  const [dbName, setDbName] = useState<string | null>(null);
+  /** undefined = 还在判断；null = 没有任何物品库（要走首次配置） */
+  const [dbName, setDbName] = useState<string | null | undefined>(undefined);
   /** 辅助库（流体/源质）换过也要重挂 Provider，否则 ATTACH 还是旧的 */
   const [auxSig, setAuxSig] = useState('');
   /** 首帧 UI 出来之前一直盖着启动页，避免 SQLite 打开/导入期间露出空白 */
@@ -27,14 +29,8 @@ export default function App() {
    * 所以底栏会出现「先有文字、几百毫秒后图标才冒出来」的闪烁。
    */
   const [fontsReady, fontError] = useFonts(Ionicons.font);
-  /** fluids.db / essentia.db 就位后才能打开主库（要在同一个连接上 ATTACH） */
+  /** 辅助库（流体/源质）由 resolveActiveDb 里的内置包落地负责，这里只等它就绪 */
   const [auxReady, setAuxReady] = useState(false);
-
-  useEffect(() => {
-    ensureAuxDbs()
-      .catch(() => {})
-      .then(() => setAuxReady(true));
-  }, []);
 
   const refresh = useCallback(() => {
     resolveActiveDb()
@@ -42,8 +38,11 @@ export default function App() {
         clearDbCaches();
         setDbName(name);
         setAuxSig(getAuxSignature());
+        setAuxReady(true);
+        // 没有图标库时不进主界面，启动页得在这里关掉（AppShell 不会挂载）
+        if (!name) setBooted(true);
       })
-      .catch(() => setDbName(BUILTIN_DB));
+      .catch(() => setDbName(null));
   }, []);
 
   useEffect(() => {
@@ -54,12 +53,17 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        {dbName && auxReady ? (
+        {dbName === null ? (
+          // 没有图标库：先让用户导入配置包 / 填图标源，下载完再进主界面
+          <ConfigProvider>
+            <SetupScreen onDone={refresh} />
+          </ConfigProvider>
+        ) : dbName && auxReady ? (
           <SQLiteProvider
             key={`${dbName}|${auxSig}`}
             databaseName={dbName}
-            assetSource={dbName === BUILTIN_DB ? { assetId: require('./assets/items.db') } : undefined}
             onInit={attachAux}
+            onError={(e) => console.warn('[db] open failed', e)}
           >
             <ConfigProvider>
               <AppShell onReady={() => setBooted(true)} />

@@ -14,16 +14,14 @@ export interface ServerEntry {
   source: 'builtin' | 'online';
 }
 
-/** 在线列表的默认地址（与图标库同一个 ae 目录） */
-export const DEFAULT_SERVER_LIST_URL =
-  'https://git.dafeimao.net/huaxidesu/dsmgtnhupdate/raw/branch/main/ae/servers.json';
+/**
+ * 在线列表的默认地址：**留空**。服主自己搭一份 servers.json，
+ * 玩家填地址、或从配置包导入（见 AEMobileIcoOutput / tools/make_bundle.py）。
+ */
+export const DEFAULT_SERVER_LIST_URL = process.env.EXPO_PUBLIC_SERVER_LIST_URL || '';
 
-/** 随 App 分发的默认线路；在线列表里同 host:port 的条目会覆盖这里的名字 */
-export const BUILTIN_SERVERS: ServerEntry[] = [
-  { host: 'mc6.dafeimao.net', port: DEFAULT_PORT, name: '默认', tag: 'IPv6 线', source: 'builtin' },
-  { host: 'mc.dafeimao.net', port: DEFAULT_PORT, name: '肥猫线', source: 'builtin' },
-  { host: 'mc1.dafeimao.net', port: DEFAULT_PORT, name: '华溪线', source: 'builtin' },
-];
+/** 随 App 分发的默认线路：空。玩家自己加，或从配置包导入 */
+export const BUILTIN_SERVERS: ServerEntry[] = [];
 
 const KEY_URL = 'servers.list_url';
 const CACHE_KEY = 'servers:global';
@@ -40,6 +38,11 @@ function readStoredUrl(): string | null {
 
 export function getServerListUrl(): string {
   return readStoredUrl() || DEFAULT_SERVER_LIST_URL;
+}
+
+/** 没配置在线列表时（空串）就是没有订阅源 */
+export function hasServerListSource(): boolean {
+  return !!getServerListUrl();
 }
 
 export function isCustomServerListUrl(): boolean {

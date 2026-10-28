@@ -2,35 +2,20 @@
 // 数据库文件统一放 expo-sqlite 的目录（documentDirectory/SQLite），按 hash 命名，切换时无需重启 App。
 import * as FileSystem from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
+import { Asset } from 'expo-asset';
 import { openDatabaseAsync } from 'expo-sqlite';
 import { isValidHttpUrl, normalizeRepoUrl } from './urlutil';
 
-/** 随 APK 分发的内置**物品**库（assets/items.db，首次启动由 SQLiteProvider 复制进来）。
- *  流体 / 源质在 fluids.db、essentia.db，由 src/dbs.ts 复制并用 ATTACH 挂上。 */
-export const BUILTIN_DB = 'items.db';
+/** 内置图标包（编译期嵌入，默认空）。见 src/bundled.ts 与 tools/embed_pack.py */
+import { BUNDLED_PACKS } from './bundled';
 
-/**
- * 内置**物品**库（assets/items.db）的 sha256。重建后必须同步改这里，
- * 否则装完新 APK 还会提示"有更新"（buildiconpack.py 会把这个值打印出来）。
- */
-export const BUILTIN_ICON_SHA = '91b8b40849bb968a442fedb80bc687b202ff88a79d7b019a1533cf475e53833e';
+/** 没有默认更新源：服主自己搭一个，玩家在设置里填，或从配置包导入 */
+export const DEFAULT_MANIFEST_URL = process.env.EXPO_PUBLIC_ICON_MANIFEST_URL || '';
 
-/**
- * 三个内置库各自的 sha256。重建任何一个后都要同步改这里，
- * 否则装完新 APK 还会提示「有更新」（buildiconpack.py 会把三个值都打出来）。
- */
-export const BUILTIN_SHAS: Record<PackKind, string> = {
-  items: BUILTIN_ICON_SHA,
-  fluids: 'f10cd2fe94ccd78ba0dcaac84b185715c5c557e3440f097bb8a73c592fcab4b3',
-  essentia: 'a51b3d37f7cbbf4fc69844a60f31c77e2d930735f10e4ba22a650b11f51343e3',
-};
-
-/** 默认清单地址（自建 Gitea 的 ae/ 目录 raw 直链；可用 EXPO_PUBLIC_ICON_MANIFEST_URL 覆盖，便于换镜像/本地联调） */
-export const DEFAULT_MANIFEST_URL =
-  process.env.EXPO_PUBLIC_ICON_MANIFEST_URL ||
-  'https://git.dafeimao.net/huaxidesu/dsmgtnhupdate/raw/branch/main/ae/version.json';
-
-const DB_DIR = `${FileSystem.documentDirectory}SQLite/`;
+const DB_DIR_URI = `${FileSystem.documentDirectory}SQLite/`;
+/** ATTACH 要真实路径，不能带 file://（FileSystem.documentDirectory 是 URI） */
+const DB_DIR_FS = DB_DIR_URI.startsWith('file://') ? DB_DIR_URI.slice(7) : DB_DIR_URI;
+const DB_DIR = DB_DIR_URI;
 const TMP_FILE = `${FileSystem.cacheDirectory}iconpack.download`;
 
 const KEY_ACTIVE = 'icons.active_db';
@@ -45,7 +30,7 @@ const auxKey = (kind: PackKind, what: 'name' | 'meta') => `pack.${kind}.${what}`
  * 目录地址补上 `version.json`，已经是 .json 的原样使用。
  */
 export function normalizeManifestUrl(input: string): string {
-  return normalizeRepoUrl(input, 'version.json') || DEFAULT_MANIFEST_URL;
+  return normalizeRepoUrl(input, 'version.json') || '';
 }
 
 export function isValidManifestUrl(url: string): boolean {
@@ -139,36 +124,37 @@ export function setManifestUrl(input: string): string {
   return url;
 }
 
-/** 内置库文件名（随 APK 分发的那份） */
-export function builtinName(kind: PackKind): string {
-  return kind === 'items' ? BUILTIN_DB : `${kind}.db`;
+/** 内置包的文件名（没内置就是 null） */
+export function builtinName(kind: PackKind): string | null {
+  return BUNDLED_PACKS[kind] ? `${kind}.db` : null;
 }
 
-/** 当前生效的库文件名；辅助库返回 null 表示用内置那份 */
+/** 当前生效的库文件名；没装过返回 null（items 为 null 表示 App 还没法用） */
 export function getActiveName(kind: PackKind): string | null {
-  if (kind === 'items') return SecureStore.getItem(KEY_ACTIVE) || BUILTIN_DB;
-  return SecureStore.getItem(auxKey(kind, 'name'));
+  const stored =
+    kind === 'items' ? SecureStore.getItem(KEY_ACTIVE) : SecureStore.getItem(auxKey(kind, 'name'));
+  if (stored) return stored;
+  return builtinName(kind);
 }
 
-/** 物品库当前生效的文件名（App.tsx 的 SQLiteProvider 用它） */
-export function getActiveDb(): string {
-  return getActiveName('items') ?? BUILTIN_DB;
+/** 物品库当前生效的文件名（App.tsx 的 SQLiteProvider 用它）；null = 还没装 */
+export function getActiveDb(): string | null {
+  return getActiveName('items');
 }
 
 /** 辅助库的「版本签名」，用于让 SQLiteProvider 在辅助库变化时重挂 */
 export function getAuxSignature(): string {
   return PACK_KINDS.filter((k) => k !== 'items')
-    .map((k) => getActiveName(k) ?? builtinName(k))
+    .map((k) => getActiveName(k) ?? '-')
     .join('|');
 }
 
 export function getInstalledInfoFor(kind: PackKind): InstalledInfo {
-  const active = getActiveName(kind);
-  const builtin = builtinName(kind);
-  const dbName = active ?? builtin;
-  if (dbName === builtin) return { version: null, sha256: null, size: null, dbName };
+  const dbName = getActiveName(kind);
+  if (!dbName) return { version: null, sha256: null, size: null, dbName: '' };
   try {
-    const raw = kind === 'items' ? SecureStore.getItem(KEY_META) : SecureStore.getItem(auxKey(kind, 'meta'));
+    const raw =
+      kind === 'items' ? SecureStore.getItem(KEY_META) : SecureStore.getItem(auxKey(kind, 'meta'));
     const meta = JSON.parse(raw || 'null');
     return {
       version: meta?.version ?? null,
@@ -188,25 +174,36 @@ export function getInstalledInfo(): InstalledInfo {
 
 // 切换即时生效：App.tsx 订阅这里，改完直接换 SQLiteProvider 的 key
 const dbListeners = new Set<() => void>();
+/** 装多个库时先别通知，等全部装完再通知一次 —— 否则装到一半就重挂 Provider，
+ *  SQLiteProvider 会去开一个还在写文件的库，界面黑屏 */
+let notifySuppressed = 0;
 
 export function subscribeActiveDb(fn: () => void): () => void {
   dbListeners.add(fn);
   return () => dbListeners.delete(fn);
 }
 
-function setActiveName(kind: PackKind, name: string, meta?: { version: string; sha256: string; size: number } | null) {
+function setActiveName(
+  kind: PackKind,
+  name: string | null,
+  meta?: { version: string; sha256: string; size: number } | null,
+) {
   const builtin = builtinName(kind);
   const nameKey = kind === 'items' ? KEY_ACTIVE : auxKey(kind, 'name');
   const metaKey = kind === 'items' ? KEY_META : auxKey(kind, 'meta');
-  if (name === builtin) {
+  if (name && name === builtin) {
     // 写回内置库名而不是删除：SecureStore 没有同步删除接口，删除后紧跟的读取会读到旧值
     SecureStore.setItem(nameKey, builtin);
     SecureStore.deleteItemAsync(metaKey).catch(() => undefined);
-  } else {
+  } else if (name) {
     SecureStore.setItem(nameKey, name);
     if (meta) SecureStore.setItem(metaKey, JSON.stringify(meta));
+  } else {
+    // 没有内置包：清掉记录（读的时候会回落到内置，没有内置就是 null）
+    SecureStore.setItem(nameKey, '');
+    SecureStore.deleteItemAsync(metaKey).catch(() => undefined);
   }
-  dbListeners.forEach((fn) => fn());
+  if (!notifySuppressed) dbListeners.forEach((fn) => fn());
 }
 
 /** 兼容旧调用：切换物品库 */
@@ -214,31 +211,63 @@ function setActiveDb(name: string, meta?: { version: string; sha256: string; siz
   setActiveName('items', name, meta);
 }
 
-/** 恢复成随包内置的库（内置库文件一直在，不需要重新下载） */
+/** 卸载某个库的在线包，回到内置（没有内置就是空） */
 export function restoreBuiltin(kind: PackKind = 'items'): void {
   setActiveName(kind, builtinName(kind));
 }
 
-/** 三个库全部恢复内置 */
+/** 三个库全部回到内置 */
 export function restoreAllBuiltin(): void {
   for (const kind of PACK_KINDS) setActiveName(kind, builtinName(kind));
 }
 
-/** 启动时确认三个库的文件都还在；外部清理/异常时退回内置库 */
-export async function resolveActiveDb(): Promise<string> {
+/**
+ * 启动时把内置包落到 SQLite 目录（编译时嵌入了才有），
+ * 再确认当前生效的文件都还在，丢了的退回内置。
+ * 返回物品库文件名；null 表示这台机器上还没有任何物品库 → App 要进「首次配置」。
+ */
+export async function resolveActiveDb(): Promise<string | null> {
+  await materializeBundledPacks();
   for (const kind of PACK_KINDS) {
     const name = getActiveName(kind);
-    if (!name || name === builtinName(kind)) continue;
+    if (!name) continue;
     const info = await FileSystem.getInfoAsync(`${DB_DIR}${name}`);
     if (!info.exists) setActiveName(kind, builtinName(kind));
   }
   return getActiveDb();
 }
 
-/** 辅助库实际要挂载的绝对路径（在线包优先，其次内置那份） */
-export function auxDbPath(kind: PackKind): string {
-  const name = getActiveName(kind) ?? builtinName(kind);
-  return `${DB_DIR}${name}`;
+/** 把编译期内置的包复制到 SQLite 目录（幂等，按大小判断） */
+async function materializeBundledPacks(): Promise<void> {
+  if (!PACK_KINDS.some((k) => BUNDLED_PACKS[k])) return;
+  try {
+    await FileSystem.makeDirectoryAsync(DB_DIR, { intermediates: true });
+  } catch {
+    // 已存在
+  }
+  for (const kind of PACK_KINDS) {
+    const pack = BUNDLED_PACKS[kind];
+    if (!pack) continue;
+    const target = `${DB_DIR}${kind}.db`;
+    try {
+      const asset = Asset.fromModule(pack.asset);
+      await asset.downloadAsync();
+      const src = asset.localUri;
+      if (!src) continue;
+      const srcInfo = await FileSystem.getInfoAsync(src);
+      const dstInfo = await FileSystem.getInfoAsync(target);
+      if (dstInfo.exists && dstInfo.size === (srcInfo.exists ? srcInfo.size : -1)) continue;
+      await FileSystem.copyAsync({ from: src, to: target });
+    } catch {
+      // 复制失败就当没有内置包
+    }
+  }
+}
+
+/** 辅助库实际要挂载的绝对路径（真实路径，不带 file://）；没有就返回 null */
+export function auxDbPath(kind: PackKind): string | null {
+  const name = getActiveName(kind);
+  return name ? `${DB_DIR_FS}${name}` : null;
 }
 
 // ---- 远端清单 ----
@@ -263,10 +292,11 @@ export async function fetchManifest(url = getManifestUrl()): Promise<RemoteManif
   }
 }
 
-/** 某个库本地生效的 sha256（没装过在线包就是内置库的 sha） */
+/** 某个库本地生效的 sha256（没装过在线包就用内置包的 sha，两者都没有就是 null） */
 function localShaOf(kind: PackKind): string | null {
   const inst = getInstalledInfoFor(kind);
-  return inst.version == null ? BUILTIN_SHAS[kind] : inst.sha256;
+  if (inst.sha256) return inst.sha256;
+  return BUNDLED_PACKS[kind]?.sha256 ?? null;
 }
 
 /** 清单里哪些库需要更新（逐个比 sha256，不看版本号排序） */
@@ -309,13 +339,20 @@ export async function downloadAndInstall(
   const totalBytes = kinds.reduce((n, k) => n + (packInfo(manifest, k)?.size ?? 0), 0) || 1;
   let doneBytes = 0;
 
-  for (const kind of kinds) {
-    const info = packInfo(manifest, kind)!;
-    await installOne(kind, info, (written, total) => {
-      options.onProgress?.((doneBytes + written) / totalBytes, doneBytes + written, totalBytes);
-    });
-    doneBytes += info.size;
+  notifySuppressed += 1;
+  try {
+    for (const kind of kinds) {
+      const info = packInfo(manifest, kind)!;
+      await installOne(kind, info, (written, total) => {
+        options.onProgress?.((doneBytes + written) / totalBytes, doneBytes + written, totalBytes);
+      });
+      doneBytes += info.size;
+    }
+  } finally {
+    notifySuppressed -= 1;
   }
+  // 全部装完再让界面重挂一次
+  if (kinds.length) dbListeners.forEach((fn) => fn());
 
   const installed = getInstalledInfo();
   return { dbName: getActiveDb(), version: installed.version ?? '', updated: kinds };
