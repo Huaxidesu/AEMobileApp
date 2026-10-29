@@ -192,7 +192,30 @@ export function StyledInput({
   );
 }
 
-export function ItemIcon({
+/**
+ * data URI 的 source 对象缓存。
+ *
+ * RN 的 `<Image source={{uri}}>` 每次 render 都新建对象时，会重新走一遍图片解析；
+ * 同一个 base64 反复包装成新对象，在滚动时是白白的开销。按 base64 串缓存住即可。
+ */
+const uriSourceCache = new Map<string, { uri: string }>();
+function sourceOf(base64: string): { uri: string } {
+  const hit = uriSourceCache.get(base64);
+  if (hit) return hit;
+  const src = { uri: `data:image/png;base64,${base64}` };
+  // 400 条约 1.3MB：一屏最多几十个格子，够用且不会和图标 LRU 抢内存
+  if (uriSourceCache.size > 400) uriSourceCache.clear();
+  uriSourceCache.set(base64, src);
+  return src;
+}
+
+/**
+ * 物品/流体/源质图标。
+ *
+ * `uri` 来自 db.ts 的惰性 getter —— 只有这个组件被真正渲染时才会去查库。
+ * 用 React.memo 包住：列表滚动/父组件状态变化时，props 没变就不重新渲染。
+ */
+export const ItemIcon = React.memo(function ItemIcon({
   uri,
   size = 40,
   fluid = false,
@@ -233,12 +256,12 @@ export function ItemIcon({
   }
   return (
     <Image
-      source={uri ? { uri: `data:image/png;base64,${uri}` } : barrier}
+      source={uri ? sourceOf(uri) : barrier}
       style={{ width: size, height: size, borderRadius: radius.s, tintColor: tint ?? undefined }}
       resizeMode="contain"
     />
   );
-}
+});
 
 export function FieldLabel({ text }: { text: string }) {
   const { colors } = useTheme();

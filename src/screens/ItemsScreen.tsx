@@ -18,19 +18,43 @@ import { useConfig } from '../config';
 import { ItemStackResp, openStream, formatItemCount, parseFrame, itemKey } from '../api';
 import type { Stream } from '../net/conn';
 import { ItemAccumulator, frameError } from '../frames';
-import { resolveItem, ResolvedItem } from '../db';
+import { prefetchNames, resolveItem, ResolvedItem } from '../db';
 import { formatAgo, readCache, scopeKey, writeCache } from '../cache';
 import { themedStyles, useTheme, spacing, radius } from '../theme';
 import { useGrid } from '../gridprefs';
 import { Chip, EmptyState, StatusDot, CenterLoading, ItemIcon } from '../components';
+import { now, perfLog } from '../perf';
 
 type SortKey = 'count' | 'name' | 'mod';
 const SORT_LABELS: Record<SortKey, string> = { count: '数量', name: '名称', mod: '模组' };
 
-interface Row extends ResolvedItem {
+/**
+ * 排序用的 collator 只建一次：`localeCompare(..., 'zh')` 每次比较都要现建一个 collator，
+ * 一万七千条排序约 24 万次比较，实测能吃掉几百毫秒。
+ */
+const collator = (() => {
+  try {
+    return new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+  } catch {
+    return null;
+  }
+})();
+
+function compareText(a: string, b: string): number {
+  return collator ? collator.compare(a, b) : a.localeCompare(b);
+}
+
+/**
+ * 列表行：解析结果整体持有，**不要展开**（`{...res}` 会触发惰性图标 getter，
+ * 等于把按需加载又变回全量加载）。
+ */
+interface Row {
+  res: ResolvedItem;
   count: number;
   craftable: boolean;
   key: string;
+  /** 预计算：模组名（排序用，来自注册名，不查库） */
+  mod: string;
 }
 
 export default function ItemsScreen({ navigation }: any) {
@@ -78,7 +102,9 @@ export default function ItemsScreen({ navigation }: any) {
     setCachedAt(null);
     setRaw([]);
     setLoading(true);
+    const t0 = now();
     readCache<ItemStackResp[]>(cacheKey).then((hit) => {
+      perfLog('items.cache', hit ? `命中 ${hit.data.length} 条 · ${now() - t0}ms` : `未命中 · ${now() - t0}ms`);
       if (!alive || !hit || liveRef.current) return;
       setRaw(hit.data);
       setCachedAt(hit.at);
@@ -125,12 +151,14 @@ export default function ItemsScreen({ navigation }: any) {
         setLoading(false);
         return;
       }
+      const t0 = now();
       const kind = accRef.current.apply(frame);
       if (kind === 'heartbeat') {
         setConnected(true);
         return;
       }
       const list = accRef.current.list();
+      perfLog('items.frame', `${frame.t} · ${list.length} 条 · 累加 ${now() - t0}ms`);
       liveRef.current = true;
       setRaw(list);
       setCachedAt(null);
@@ -174,33 +202,68 @@ export default function ItemsScreen({ navigation }: any) {
     return () => clearTimeout(t);
   }, [keyword]);
 
-  const rows: Row[] = useMemo(() => {
-    let list = raw.map((r) => {
-      const resolved = resolveItem(db, { name: r.item_name, meta: r.meta, nbt: r.nbt });
+  /**
+   * 第一步：把服务端列表解析成可渲染的行。
+   *
+   * **只依赖 raw**，不碰筛选/排序 —— 以前这两步挤在同一个 useMemo 里，
+   * 点一次「按名称排序」就要把一万七千条重新 resolve 一遍。
+   * 显示名和图标都是惰性的（见 db.ts）：默认视图（按数量排序、不搜索）
+   * 一次库都不查，这里只是纯 JS 的对象映射。
+   */
+  const base = useMemo(() => {
+    const t0 = now();
+    const list: Row[] = raw.map((r) => ({
+      res: resolveItem(db, { name: r.item_name, meta: r.meta, nbt: r.nbt }),
+      count: r.count,
+      craftable: r.craftable,
       // key 必须带上 nbt：流体滴共用 ae2fc:fluid_drop:0，不带 nbt 的话 771 条流体全是重复 key，
       // FlatList 会把它们当成同一项（只渲染一条，甚至全部丢掉）
-      return { ...resolved, count: r.count, craftable: r.craftable, key: itemKey(r.item_name, r.meta, r.nbt) };
-    });
+      key: itemKey(r.item_name, r.meta, r.nbt),
+      mod: r.item_name.split(':')[0] ?? '',
+    }));
+    perfLog('items.resolve', `${raw.length} 条 · ${now() - t0}ms`);
+    return list;
+  }, [raw, db]);
+
+  /** 第二步：筛选 + 排序。只依赖筛选条件，不重新解析。 */
+  const rows: Row[] = useMemo(() => {
+    const t0 = now();
+    // 只有「按名称排序」和「搜索」需要显示名：先批量取一次（默认视图完全跳过）
+    const needName = sortKey === 'name' || !!kwApplied;
+    let preMs = 0;
+    if (needName) {
+      const tp = now();
+      prefetchNames(db, raw);
+      preMs = now() - tp;
+    }
+    let list = base;
     // 类型筛选：三类互不影响，可以只留其中一两种
     if (!kinds.item || !kinds.fluid || !kinds.essentia) {
-      list = list.filter((r) => (r.isFluid ? kinds.fluid : r.isEssentia ? kinds.essentia : kinds.item));
+      list = list.filter((r) => (r.res.isFluid ? kinds.fluid : r.res.isEssentia ? kinds.essentia : kinds.item));
     }
-    // 按「显示名」过滤：物品用库里的 dname，流体/源质用解析出来的中文名，所以三类都能搜到
+    // 按「显示名 + 注册名」过滤（显示名此时已在 nameCache 里，是纯内存读）
     if (kwApplied) {
-      list = list.filter(
-        (r) => (r.dname ?? '').toLowerCase().includes(kwApplied) || r.name.toLowerCase().includes(kwApplied),
-      );
+      list = list.filter((r) => {
+        const dn = r.res.dname ?? r.res.name;
+        return dn.toLowerCase().includes(kwApplied) || r.res.name.toLowerCase().includes(kwApplied);
+      });
     }
+    // 原地排序会改到 base，没过滤时必须先拷一份
+    if (list === base) list = base.slice();
     const dir = sortAsc ? 1 : -1;
     list.sort((a, b) => {
       let r = 0;
       if (sortKey === 'count') r = a.count - b.count;
-      else if (sortKey === 'mod') r = (a.name.split(':')[0] ?? '').localeCompare(b.name.split(':')[0] ?? '');
-      else r = (a.dname ?? a.name).localeCompare(b.dname ?? b.name, 'zh');
+      else if (sortKey === 'mod') r = compareText(a.mod, b.mod);
+      else r = compareText(a.res.dname ?? a.res.name, b.res.dname ?? b.res.name);
       return r * dir;
     });
+    const ms = now() - t0;
+    if (ms >= 8) {
+      perfLog('items.filterSort', `${list.length}/${base.length} 条 · 取名字 ${preMs}ms · 合计 ${ms}ms`);
+    }
     return list;
-  }, [raw, kwApplied, kinds, sortKey, sortAsc]);
+  }, [base, raw, db, kwApplied, kinds, sortKey, sortAsc]);
 
   /** 网格宽度 → 单个格子宽度 → 图标尺寸（列数越多格子越小） */
   const tileW = Math.max(24, (win.width - spacing.m * 2 - spacing.s * (prefs.columns - 1)) / prefs.columns);
@@ -213,9 +276,27 @@ export default function ItemsScreen({ navigation }: any) {
       <TouchableOpacity
         style={[tileStyles.tile, { width: tileSize, height: tileSize }]}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('ItemDetail', { item })}
+        onPress={() =>
+          navigation.navigate('ItemDetail', {
+            // 详情页只需要这几个字段，传个干净的普通对象过去（别把惰性 getter 一起带过去）
+            item: {
+              name: item.res.name,
+              meta: item.res.meta,
+              nbt: item.res.nbt ?? undefined,
+              count: item.count,
+              craftable: item.craftable,
+            },
+          })
+        }
       >
-        <ItemIcon uri={item.icon} size={iconSize} fluid={item.isFluid} fluidColor={item.fluidColor} tint={item.aspectTint} />
+        {/* 图标在这里才第一次被读到 —— 一屏只有二三十个格子，其余条目从不查库 */}
+        <ItemIcon
+          uri={item.res.icon}
+          size={iconSize}
+          fluid={item.res.isFluid}
+          fluidColor={item.res.fluidColor}
+          tint={item.res.aspectTint}
+        />
         <View style={{ position: 'absolute', right: 6, bottom: 6 }}>
           <Text style={tileStyles.count}>{formatItemCount(item.count)}</Text>
         </View>
@@ -422,8 +503,10 @@ export default function ItemsScreen({ navigation }: any) {
             contentContainerStyle={{ padding: spacing.m, gap: spacing.s }}
             columnWrapperStyle={{ gap: spacing.s }}
             getItemLayout={getItemLayout}
-            initialNumToRender={40}
-            maxToRenderPerBatch={40}
+            // 首屏只渲染一屏多一点：每个格子会同步查一次图标（命中 LRU 则零成本），
+            // 一次铺太多会让首帧变慢
+            initialNumToRender={numColumns * 5}
+            maxToRenderPerBatch={numColumns * 4}
             windowSize={7}
             removeClippedSubviews
             ListFooterComponent={
