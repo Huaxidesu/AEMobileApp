@@ -4,6 +4,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { CACHE_CATEGORY_LABEL, CacheCategory, CacheSummary, clearCache, formatBytes, summarizeCache } from '../cache';
+import { avatarCacheStats, clearAvatarCache } from '../avatars';
 import { getInstalledInfo, getOnlinePackBytes, removeOnlinePacks } from '../iconpack';
 import { themedStyles, useTheme, spacing, card } from '../theme';
 import { GhostButton, PrimaryButton, SettingsGroup } from '../components';
@@ -15,12 +16,14 @@ export default function CacheScreen() {
   const { colors } = useTheme();
   const [summary, setSummary] = useState<CacheSummary | null>(null);
   const [packBytes, setPackBytes] = useState<number | null>(null);
+  const [avatar, setAvatar] = useState<{ bytes: number; count: number } | null>(null);
   const [installed, setInstalled] = useState(getInstalledInfo());
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     setSummary(await summarizeCache());
     setPackBytes(await getOnlinePackBytes());
+    setAvatar(await avatarCacheStats());
     setInstalled(getInstalledInfo());
   }, []);
 
@@ -72,6 +75,23 @@ export default function CacheScreen() {
     );
   }
 
+  function confirmClearAvatars() {
+    Alert.alert('清理头像缓存', '将删除已下载的玩家皮肤头像。下次进聊天页会重新按需下载，聊天记录不受影响。', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '清理',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          await clearAvatarCache();
+          await refresh();
+          setBusy(false);
+          showToast('头像缓存已清空', 'ok');
+        },
+      },
+    ]);
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
@@ -81,7 +101,7 @@ export default function CacheScreen() {
             {summary ? formatBytes(summary.total) : '—'}
           </Text>
           <Text style={{ color: colors.textFaint, fontSize: 11, marginTop: 2 }}>
-            {summary ? `${summary.count} 个缓存文件 · 冷启动与离线时先用它出内容` : '正在统计…'}
+            {summary ? `${summary.count} 个缓存文件 · 不含聊天头像 · 冷启动与离线时先用它出内容` : '正在统计…'}
           </Text>
         </View>
 
@@ -115,6 +135,27 @@ export default function CacheScreen() {
               icon="trash"
               onPress={confirmClearPacks}
               disabled={busy || !packBytes}
+            />
+          </View>
+        </SettingsGroup>
+
+        <SettingsGroup title="聊天头像">
+          <View style={{ padding: spacing.m, gap: spacing.s }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>头像缓存</Text>
+              <Text style={{ color: colors.textDim, fontSize: 13 }}>
+                {avatar ? `${avatar.count} 个 · ${formatBytes(avatar.bytes)}` : '—'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16 }}>
+              游戏内玩家的皮肤头像（Mojang 优先，LittleSkin 兜底）。30 天过期后后台刷新，
+              刷新失败会继续用旧图；清空后下次进聊天页按需重新下载。
+            </Text>
+            <GhostButton
+              label="清理头像缓存"
+              icon="trash"
+              onPress={confirmClearAvatars}
+              disabled={busy || !avatar || avatar.count === 0}
             />
           </View>
         </SettingsGroup>

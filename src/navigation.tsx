@@ -14,6 +14,7 @@ import PlanReviewScreen from './screens/PlanReviewScreen';
 import CraftScreen from './screens/CraftScreen';
 import ChatScreen from './screens/ChatScreen';
 import ChatNameScreen from './screens/ChatNameScreen';
+import ChatAppearanceScreen from './screens/ChatAppearanceScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ServerSettingsScreen from './screens/ServerSettingsScreen';
 import ServerListScreen from './screens/ServerListScreen';
@@ -138,6 +139,11 @@ export default function RootNavigator() {
         <Stack.Screen name="PlanReview" component={PlanReviewScreen} options={subHeader('合成计划', colors)} />
         <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={subHeader('服务器与账号', colors)} />
         <Stack.Screen name="ChatName" component={ChatNameScreen} options={subHeader('聊天昵称', colors)} />
+        <Stack.Screen
+          name="ChatAppearance"
+          component={ChatAppearanceScreen}
+          options={subHeader('聊天外观', colors)}
+        />
         <Stack.Screen name="ServerList" component={ServerListScreen} options={subHeader('服务器列表', colors)} />
         <Stack.Screen name="IconPack" component={IconPackScreen} options={subHeader('图标库', colors)} />
         <Stack.Screen name="CacheDetail" component={CacheScreen} options={subHeader('存储与缓存', colors)} />

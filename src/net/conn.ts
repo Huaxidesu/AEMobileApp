@@ -280,7 +280,11 @@ class TcpClient {
           this.sendAuth();
           return;
         }
-        const err: any = new Error(code === 'AUTH_FAILED' ? '密码错误或已失效' : code);
+        const err: any = new Error(
+          code === 'AUTH_FAILED'
+            ? '密码错误或已失效（如果刚重置过绑定码，请在游戏里执行 /aemobile token reset 获取新码）'
+            : code,
+        );
         err.code = code;
         err.xhrStatus = code === 'AUTH_FAILED' ? 401 : 0;
         const h = this.hello;
@@ -526,7 +530,11 @@ export async function requestOnce<T = any>(
           const code = String(f.payload?.code ?? 'AUTH_FAILED');
           // 鉴权失败时把签名要素打出来，方便和服务端 WARN 日志对照（不含 token 本体）
           console.log('[AEMobile][auth-fail] ' + JSON.stringify({ code, len: target.token.length, auth: authDebug }));
-          const err: any = new Error(code === 'AUTH_FAILED' ? '密码错误或已失效' : code);
+          const err: any = new Error(
+            code === 'AUTH_FAILED'
+              ? '密码错误或已失效（如果刚重置过绑定码，请在游戏里执行 /aemobile token reset 获取新码）'
+              : code,
+          );
           err.code = code;
           err.xhrStatus = code === 'AUTH_FAILED' ? 401 : 0;
           done(() => reject(err));

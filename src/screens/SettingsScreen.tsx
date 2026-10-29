@@ -1,6 +1,6 @@
 // 设置总览：连接 / 内容 / 存储 / 关于。具体配置都在各自的子页里
 import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfig } from '../config';
@@ -14,6 +14,7 @@ import { APP_VERSION } from '../appinfo';
 import { themedStyles, useTheme, spacing } from '../theme';
 import { SettingsGroup, SettingsRow, StatusDot } from '../components';
 import { useGrid } from '../gridprefs';
+import { useChatPrefs } from '../chatprefs';
 
 export default function SettingsScreen({ navigation }: any) {
   const { colors, mode } = useTheme();
@@ -21,6 +22,7 @@ export default function SettingsScreen({ navigation }: any) {
   const paged = prefs.mode === 'page';
   const { config, complete, accountName } = useConfig();
   const { name: chatName } = useChat();
+  const { prefs: chatPrefs } = useChatPrefs();
   const insets = useSafeAreaInsets();
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [cacheCount, setCacheCount] = useState(0);
@@ -127,6 +129,35 @@ export default function SettingsScreen({ navigation }: any) {
             value={chatName || '未设置'}
             detail={chatName ? '点一下可以改，只影响显示' : '进聊天页时也可以设置'}
             onPress={() => navigation.navigate('ChatName')}
+          />
+          <SettingsRow
+            icon="text-outline"
+            label="聊天外观"
+            value={`${chatPrefs.fontSize}px · 头像 ${chatPrefs.avatarSize || '关'}`}
+            detail={`气泡宽 ${chatPrefs.bubbleMaxWidth}% · ${
+              chatPrefs.density === 'compact' ? '紧凑' : chatPrefs.density === 'cozy' ? '宽松' : '标准'
+            }间距 · 可实时预览`}
+            onPress={() => navigation.navigate('ChatAppearance')}
+            divider={false}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup
+          title="绑定码"
+          footnote="绑定码泄露、换手机或怀疑被盗用时，在游戏里执行 /aemobile token reset；旧码会立刻失效，所有手机要用新码重连"
+        >
+          <SettingsRow
+            icon="key-outline"
+            label="重置绑定码"
+            value="在游戏内执行"
+            detail="/aemobile token reset"
+            onPress={() =>
+              Alert.alert(
+                '重置绑定码',
+                '为了安全，重置只能在游戏里执行。\n\n进入服务器后输入：/aemobile token reset\n\n聊天栏会显示新码，旧码和所有已连接的手机立即失效。',
+                [{ text: '知道了' }],
+              )
+            }
             divider={false}
           />
         </SettingsGroup>
