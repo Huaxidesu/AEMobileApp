@@ -66,12 +66,17 @@ function categoryOf(key: string): CacheCategory | 'other' {
 
 // ---- 读写 ----
 
+/** 缓存超过这个时间就当未命中：物品列表几百 KB 起步，留一周足够，再老的内容反而误导人 */
+const CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
 export async function readCache<T>(key: string): Promise<CacheEntry<T> | null> {
   try {
     const info = await FileSystem.getInfoAsync(fileFor(key));
     if (!info.exists) return null;
     const parsed = JSON.parse(await FileSystem.readAsStringAsync(fileFor(key))) as CacheEntry<T>;
     if (!parsed || parsed.v !== CACHE_VERSION) return null;
+    // 过期当未命中（以前没有过期，换过服务器后旧缓存会一直留着占空间）
+    if (typeof parsed.at !== 'number' || Date.now() - parsed.at > CACHE_MAX_AGE_MS) return null;
     return parsed;
   } catch {
     // 文件损坏或不可读：当作没有缓存，不影响联网流程
@@ -81,28 +86,67 @@ export async function readCache<T>(key: string): Promise<CacheEntry<T> | null> {
 
 const writeChains = new Map<string, Promise<void>>();
 const lastWritten = new Map<string, number>();
+/** 节流窗口内收到的最新数据：窗口结束时补写这一份 */
+const pendingData = new Map<string, unknown>();
+const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * 真正落盘。序列化（几 MB 的 JSON.stringify）放到 setTimeout 里跑，
+ * 避免卡住调用方的渲染帧 —— 以前是在 setRaw 之后同步 stringify，会掉帧。
+ */
+function flush(key: string, data: unknown, at: number): Promise<void> {
+  const prev = writeChains.get(key) ?? Promise.resolve();
+  const next = prev.then(
+    () =>
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          (async () => {
+            try {
+              await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true }).catch(() => undefined);
+              const payload: CacheEntry<unknown> = { v: CACHE_VERSION, at, key, data };
+              await FileSystem.writeAsStringAsync(fileFor(key), JSON.stringify(payload));
+            } catch {
+              // 磁盘写失败（空间不足等）只影响下次冷启动，不打断当前使用
+            } finally {
+              resolve();
+            }
+          })();
+        }, 0);
+      }),
+  );
+  writeChains.set(key, next);
+  return next;
+}
 
 /**
  * 写入缓存。
- * @param minInterval 最小写入间隔（毫秒）。SSE 高频帧用它限制写盘次数，0 表示不限。
+ *
+ * @param minInterval 最小写入间隔（毫秒）。高频帧用它限制写盘次数，0 表示不限。
+ *
+ * 节流语义是「窗口内只写最后一次」（trailing）：以前是窗口内直接 return，
+ * 于是 cpus/details 这类高频流在断线瞬间的最后一次状态永远落不了盘。
  */
 export function writeCache<T>(key: string, data: T, minInterval = 0): Promise<void> {
   const now = Date.now();
-  if (minInterval > 0 && now - (lastWritten.get(key) ?? 0) < minInterval) return Promise.resolve();
-  lastWritten.set(key, now);
-
-  const prev = writeChains.get(key) ?? Promise.resolve();
-  const next = prev.then(async () => {
-    try {
-      await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true }).catch(() => undefined);
-      const payload: CacheEntry<T> = { v: CACHE_VERSION, at: now, key, data };
-      await FileSystem.writeAsStringAsync(fileFor(key), JSON.stringify(payload));
-    } catch {
-      // 磁盘写失败（空间不足等）只影响下次冷启动，不打断当前使用
+  const last = lastWritten.get(key) ?? 0;
+  if (minInterval > 0 && now - last < minInterval) {
+    pendingData.set(key, data);
+    if (!pendingTimers.has(key)) {
+      const wait = Math.max(16, minInterval - (now - last));
+      const timer = setTimeout(() => {
+        pendingTimers.delete(key);
+        const latest = pendingData.get(key);
+        pendingData.delete(key);
+        if (latest === undefined) return;
+        lastWritten.set(key, Date.now());
+        flush(key, latest, Date.now());
+      }, wait);
+      pendingTimers.set(key, timer);
     }
-  });
-  writeChains.set(key, next);
-  return next;
+    return Promise.resolve();
+  }
+  lastWritten.set(key, now);
+  return flush(key, data, now);
 }
 
 // ---- 统计与清理 ----
@@ -166,6 +210,10 @@ export async function summarizeCache(): Promise<CacheSummary> {
 export async function clearCache(): Promise<void> {
   writeChains.clear();
   lastWritten.clear();
+  pendingData.clear();
+  // 挂着的补写定时器要先取消，否则清完又被写回来
+  for (const t of pendingTimers.values()) clearTimeout(t);
+  pendingTimers.clear();
   try {
     await FileSystem.deleteAsync(CACHE_DIR, { idempotent: true });
   } catch {
