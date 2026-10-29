@@ -21,6 +21,11 @@ export interface ServerAccount extends ServerConfig {
   id: string;
   /** 玩家备注名；留空时用线路名或地址兜底 */
   name: string;
+  /**
+   * 聊天用的自定义名称（发给游戏内显示为 `[AEMobile][名称]`）。
+   * 跟账号走：换服务器就是另一套身份，不会把 A 服的名字带到 B 服。
+   */
+  chatName?: string;
   updatedAt: number;
 }
 
@@ -172,6 +177,14 @@ export function deleteAccount(id: string): void {
     return;
   }
   if (wasActive) setActiveAccountId(ids[0]);
+}
+
+/** 写入聊天昵称（跟账号走）。返回是否写入成功。 */
+export function setChatName(id: string, chatName: string): boolean {
+  const acc = loadAccounts().find((a) => a.id === id);
+  if (!acc) return false;
+  upsertAccount({ ...acc, chatName });
+  return true;
 }
 
 /** 列表里显示的名字：备注名 → 线路名 → 地址 */

@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfig } from '../config';
+import { useChat } from '../chat';
 import { baseUrl } from '../api';
 import { formatBytes, summarizeCache } from '../cache';
 import { getInstalledInfo, getOnlinePackBytes } from '../iconpack';
@@ -19,6 +20,7 @@ export default function SettingsScreen({ navigation }: any) {
   const { prefs, pageSize, setMode } = useGrid();
   const paged = prefs.mode === 'page';
   const { config, complete, accountName } = useConfig();
+  const { name: chatName } = useChat();
   const insets = useSafeAreaInsets();
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
   const [cacheCount, setCacheCount] = useState(0);
@@ -114,6 +116,17 @@ export default function SettingsScreen({ navigation }: any) {
             value={iconVersion ? `在线 ${iconVersion}` : '内置'}
             detail={packBytes ? `在线包占用 ${formatBytes(packBytes)} · 可换更新源` : '随安装包分发 · 可换更新源'}
             onPress={() => navigation.navigate('IconPack')}
+            divider={false}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="聊天" footnote="手机发言在游戏里显示为 [AEMobile][昵称]；游戏内公屏实时同步到手机，本地保留 7 天">
+          <SettingsRow
+            icon="chatbubbles-outline"
+            label="聊天昵称"
+            value={chatName || '未设置'}
+            detail={chatName ? '点一下可以改，只影响显示' : '进聊天页时也可以设置'}
+            onPress={() => navigation.navigate('ChatName')}
             divider={false}
           />
         </SettingsGroup>

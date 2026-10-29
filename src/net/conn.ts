@@ -435,6 +435,12 @@ class TcpClient {
     const id = this.nextId++;
     const p: Pending = {
       resolve: (r) => {
+        // 服务端拒绝订阅（如老版本没有这个 op）会回一条 ok:false 的 RES，
+        // 这里必须报错，否则界面会显示「已连接」但永远收不到推送。
+        if (r && r.ok === false) {
+          stream.emit('error', { message: String(r.m ?? '订阅失败') });
+          return;
+        }
         stream.streamId = r.s;
         if (r.sid) stream.sid = r.sid;
         stream.emit('open', {});

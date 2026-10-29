@@ -50,13 +50,17 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  style,
 }: {
   options: { key: T; label: string }[];
   value: T;
   onChange: (k: T) => void;
+  /** 宽度之类的覆盖。**不要在它外面再套一个 View 控制宽度** —— 包裹层的高度可能是 0，
+   *  看着正常但点不动（监控页 2026-10-30 真机踩到）。 */
+  style?: any;
 }) {
   return (
-    <View style={segStyles.wrap}>
+    <View style={[segStyles.wrap, style]}>
       {options.map((o) => {
         const active = o.key === value;
         return (

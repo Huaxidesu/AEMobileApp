@@ -6,11 +6,14 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from './config';
+import { useChat } from './chat';
 import { useTheme, Palette } from './theme';
 import ItemsScreen from './screens/ItemsScreen';
 import ItemDetailScreen from './screens/ItemDetailScreen';
 import PlanReviewScreen from './screens/PlanReviewScreen';
 import CraftScreen from './screens/CraftScreen';
+import ChatScreen from './screens/ChatScreen';
+import ChatNameScreen from './screens/ChatNameScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ServerSettingsScreen from './screens/ServerSettingsScreen';
 import ServerListScreen from './screens/ServerListScreen';
@@ -22,8 +25,7 @@ import ThemeScreen from './screens/ThemeScreen';
 
 /**
  * 监控页懒加载：它依赖 echarts（约 1MB JS）+ react-native-echarts，
- * 静态引入会在启动时就解析一遍。而 MSPT 已移除，这一页目前只是占位，
- * 大多数人根本不会打开，所以推迟到真正切过去时再加载。
+ * 静态引入会在启动时就解析一遍。只有真的切到这一页时才加载。
  */
 const MonitorScreen = React.lazy(() => import('./screens/MonitorScreen'));
 
@@ -69,17 +71,21 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Items: 'grid',
   Craft: 'construct',
   Monitor: 'pulse',
+  Chat: 'chatbubbles',
   Settings: 'settings',
 };
 
 function MainTabs() {
   const { colors } = useTheme();
+  // 聊天订阅是常驻的（见 chat.tsx），所以这里能拿到「没在看聊天页时」的未读数
+  const { unread } = useChat();
   return (
     <Tabs.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textFaint,
+        tabBarBadgeStyle: { backgroundColor: colors.bad, color: '#fff', fontSize: 10 },
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
@@ -94,6 +100,11 @@ function MainTabs() {
       <Tabs.Screen name="Items" component={ItemsScreen} />
       <Tabs.Screen name="Craft" component={CraftScreen} />
       <Tabs.Screen name="Monitor" component={LazyMonitor} />
+      <Tabs.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={{ tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined }}
+      />
       <Tabs.Screen name="Settings" component={SettingsScreen} />
     </Tabs.Navigator>
   );
@@ -103,6 +114,7 @@ const TAB_LABELS: Record<string, string> = {
   Items: '物品',
   Craft: '合成',
   Monitor: '监控',
+  Chat: '聊天',
   Settings: '设置',
 };
 
@@ -125,6 +137,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ presentation: 'modal', ...subHeader('物品详情', colors) }} />
         <Stack.Screen name="PlanReview" component={PlanReviewScreen} options={subHeader('合成计划', colors)} />
         <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={subHeader('服务器与账号', colors)} />
+        <Stack.Screen name="ChatName" component={ChatNameScreen} options={subHeader('聊天昵称', colors)} />
         <Stack.Screen name="ServerList" component={ServerListScreen} options={subHeader('服务器列表', colors)} />
         <Stack.Screen name="IconPack" component={IconPackScreen} options={subHeader('图标库', colors)} />
         <Stack.Screen name="CacheDetail" component={CacheScreen} options={subHeader('存储与缓存', colors)} />

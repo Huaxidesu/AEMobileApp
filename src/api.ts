@@ -158,6 +158,93 @@ export interface CraftPlan {
   bytesUsed: number;
 }
 
+// ---- TPS / MSPT（服务端 metrics/TickStats，op = "tps"，固定 5 秒一帧） ----
+
+/** 服务端整体（最近 5 秒窗口） */
+export interface TpsSrv {
+  /** 每 tick 平均耗时（毫秒） */
+  mspt: number;
+  /** 窗口内单 tick 最差耗时（毫秒） */
+  max: number;
+  /** 由 mspt 折算：<=50ms 恒为 20 */
+  tps: number;
+  /** 窗口内 tick 数，0 表示没数据 */
+  ticks: number;
+  /** 全服在线人数 */
+  players: number;
+}
+
+/** 世界清单（一次性请求 `tps` 返回）：名字、人数、实体、区块；带 tick 数据时也在这里 */
+export interface TpsWorldMeta {
+  id: number;
+  /** 已汉化的显示名（MV alias > config > 内置表 > provider > 世界名） */
+  d: string;
+  /** 世界文件夹名，如 PERSONAL_DIM_180 */
+  n: string;
+  p: number;
+  e: number;
+  c: number;
+  /** 1 = 家园世界（PERSONAL_DIM_*） */
+  pm: 0 | 1;
+  /** 1 = 维度已加载 */
+  on: 0 | 1;
+  mspt?: number;
+  max?: number;
+  tps?: number;
+  ticks?: number;
+}
+
+/** 推送帧里只带被检测维度的 tick 数据（本服 91 个维度，带全量清单 5 秒就 6KB） */
+export interface TpsWorldTick {
+  id: number;
+  mspt: number;
+  max: number;
+  tps: number;
+  ticks: number;
+}
+
+/** 推送帧 */
+export interface TpsFrame {
+  t: 'f';
+  ts: number;
+  srv: TpsSrv;
+  w: TpsWorldTick[];
+}
+
+/** 一次性请求的完整返回 */
+export interface TpsFull {
+  ts: number;
+  srv: TpsSrv;
+  w: TpsWorldMeta[];
+}
+
+// ---- 聊天（op = "chat" 订阅 / "chatSend" 请求） ----
+
+/** 推送帧：`m` 的每一行是 `[seq, kind, name, text, ts]` */
+export interface ChatFrame {
+  t: 'c';
+  /** 服务端这次启动的标识；变了说明服务端重启过（seq 归零） */
+  boot: number;
+  /** 本帧最后一条的 seq，下次订阅带回去 */
+  seq: number;
+  /** 1 = 中间有消息过期（服务端只留 30 秒缓冲） */
+  gap?: 1;
+  m: [number, number, string, string, number][];
+}
+
+/**
+ * 发一条聊天。走**共享长连接**（不是 requestOnce 的短连接）：
+ * 聊天是高频小包，每次新建连接要 3 次往返，体验会很差。
+ */
+export async function sendChat(
+  cfg: ServerConfig,
+  name: string,
+  text: string,
+): Promise<ApiResponse<{ seq: number; boot: number }>> {
+  const res = await tcp.request<{ seq: number; boot: number }>(cfg, 'chatSend', { name, text });
+  return { succeed: res.ok, body: res.b, message: res.m };
+}
+
 /**
  * 推送帧信封（和 2.1.0 的 SSE 帧一模一样，只是外面多包了一层 TCP 帧）。
  *

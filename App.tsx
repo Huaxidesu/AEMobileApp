@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import RootNavigator from './src/navigation';
 import SetupScreen from './src/screens/SetupScreen';
 import { ConfigProvider, useConfig } from './src/config';
+import { ChatProvider } from './src/chat';
 import { ToastHost } from './src/toast';
 import { themedStyles, useTheme, currentPalette, spacing } from './src/theme';
 import { ThemeProvider } from './src/theme';
@@ -147,7 +148,10 @@ function AppShell({ dbName, onReady }: { dbName: string; onReady: () => void }) 
     <>
       {/* 状态栏不透明：内容永远不会滚到状态栏底下；新版 Android 强制边到边时由各屏的 insets 兜底 */}
       <StatusBar style={colors.isDark ? 'light' : 'dark'} translucent={false} backgroundColor={colors.bg} />
-      <RootNavigator />
+      {/* 聊天订阅常驻：挂在导航之外，切 Tab / 锁屏回来都能收，底栏才有未读角标 */}
+      <ChatProvider>
+        <RootNavigator />
+      </ChatProvider>
       <ToastHost />
     </>
   );
