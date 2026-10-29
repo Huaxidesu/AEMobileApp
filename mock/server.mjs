@@ -75,13 +75,17 @@ const storedItems = items.map((it) => ({
   nbt: null,
 }));
 nbt_items.forEach((it, i) => {
-  if (i % 3 === 0) {
+  if (i % 3 === 0 || it.nbt) {
+    const demoNbt =
+      Buffer.from([0x0a, 0x00, 0x00, 0x08, 0x00, 0x04]).toString("base64") +
+      Buffer.from("demo").toString("base64") +
+      Buffer.from([0]).toString("base64");
     storedItems.push({
       item_name: it.name,
       count: randCount(),
       craftable: Math.random() < 0.5,
       meta: it.meta,
-      nbt: Buffer.from([0x0a, 0x00, 0x00, 0x08, 0x00, 0x04]).toString("base64") + Buffer.from("demo").toString("base64") + Buffer.from([0]).toString("base64"),
+      nbt: it.nbt || demoNbt, // 数据里自带 nbt（源质等）就用自带的
     });
   }
 });
