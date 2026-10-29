@@ -1,6 +1,6 @@
 // 设置总览：连接 / 内容 / 存储 / 关于。具体配置都在各自的子页里
 import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConfig } from '../config';
@@ -16,7 +16,8 @@ import { useGrid } from '../gridprefs';
 
 export default function SettingsScreen({ navigation }: any) {
   const { colors, mode } = useTheme();
-  const { prefs, pageSize } = useGrid();
+  const { prefs, pageSize, setMode } = useGrid();
+  const paged = prefs.mode === 'page';
   const { config, complete, accountName } = useConfig();
   const insets = useSafeAreaInsets();
   const [cacheBytes, setCacheBytes] = useState<number | null>(null);
@@ -79,8 +80,22 @@ export default function SettingsScreen({ navigation }: any) {
             icon="grid-outline"
             label="界面布局"
             value={`${prefs.columns} 列 × ${prefs.rows} 行`}
-            detail={`每页 ${pageSize} 个 · 物品页右上角也有同一个入口`}
+            detail={paged ? `翻页 · 每页 ${pageSize} 个 · 物品页右上角也有同一个入口` : '无限下滑 · 物品页右上角也有同一个入口'}
             onPress={() => navigation.navigate('Layout')}
+          />
+          <SettingsRow
+            icon="swap-vertical"
+            label="翻页浏览"
+            detail={paged ? '底部显示翻页条，点中间页码可跳到指定页' : '默认无限下滑，右下角一键到顶 / 到底'}
+            onPress={() => setMode(paged ? 'scroll' : 'page')}
+            right={
+              <Switch
+                value={paged}
+                onValueChange={(v) => setMode(v ? 'page' : 'scroll')}
+                trackColor={{ false: colors.surfaceHigh, true: colors.accent }}
+                thumbColor={paged ? colors.bg : colors.textDim}
+              />
+            }
           />
           <SettingsRow
             icon="color-palette"

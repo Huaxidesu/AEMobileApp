@@ -1,6 +1,15 @@
 // 物品终端：搜索 + 过滤 + 排序 + 网格浏览
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import {
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,6 +55,11 @@ export default function ItemsScreen({ navigation }: any) {
   const [error, setError] = useState<string | null>(null);
   /** 当前页（0 起）；过滤/排序/每页容量一变就回到第一页 */
   const [page, setPage] = useState(0);
+  /** 翻页模式下「点击页码跳转」的弹层 */
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const [jumpText, setJumpText] = useState('');
+  /** 列表引用：翻页回顶、无限下滑的一键到顶/到底都靠它 */
+  const listRef = useRef<FlatList<Row> | null>(null);
   /** 当前列表来自缓存的写入时间；联网收到新帧后清空 */
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   const esRef = useRef<Stream | null>(null);
@@ -190,12 +204,14 @@ export default function ItemsScreen({ navigation }: any) {
 
   /** 网格宽度 → 单个格子宽度 → 图标尺寸（列数越多格子越小） */
   const tileW = Math.max(24, (win.width - spacing.m * 2 - spacing.s * (prefs.columns - 1)) / prefs.columns);
-  const iconSize = Math.round(Math.max(14, Math.min(40, tileW * 0.52)));
+  /** 格子固定成正方形，最后一行不满时不会被 flex 拉宽（不自动缩放） */
+  const tileSize = Math.floor(tileW);
+  const iconSize = Math.round(Math.max(14, Math.min(40, tileSize * 0.52)));
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) => (
       <TouchableOpacity
-        style={tileStyles.tile}
+        style={[tileStyles.tile, { width: tileSize, height: tileSize }]}
         activeOpacity={0.7}
         onPress={() => navigation.navigate('ItemDetail', { item })}
       >
@@ -210,10 +226,12 @@ export default function ItemsScreen({ navigation }: any) {
         ) : null}
       </TouchableOpacity>
     ),
-    [iconSize, navigation],
+    [iconSize, tileSize, navigation, colors.accent],
   );
 
   const numColumns = prefs.columns;
+  /** 翻页模式：只渲染当前页；无限下滑模式：整份列表交给 FlatList 虚拟化 */
+  const paged = prefs.mode === 'page';
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   /** 当前页要显示的物品：分页大小 = 列数 × 每页行数 */
@@ -221,11 +239,49 @@ export default function ItemsScreen({ navigation }: any) {
     () => rows.slice(safePage * pageSize, safePage * pageSize + pageSize),
     [rows, safePage, pageSize],
   );
+  const listData = paged ? pageRows : rows;
+
+  /** 固定行高：无限下滑时 FlatList 靠它准确计算总高度（一键到底/回顶不会差一截）。
+   *  注意 FlatList 的 numColumns 会把每行合成一个虚拟项，getItemLayout 拿到的是**行号**，
+   *  不要再除以列数（否则总高度只有真实值的 1/列数，scrollToOffset 会被截断）。 */
+  const rowHeight = tileSize + spacing.s;
+  const getItemLayout = useCallback(
+    (_: any, rowIndex: number) => ({
+      length: rowHeight,
+      offset: spacing.m + rowIndex * rowHeight,
+      index: rowIndex,
+    }),
+    [rowHeight],
+  );
 
   // 换了筛选/排序/每页容量就回第一页，否则可能停在一个已经不存在的页码上
   useEffect(() => {
     setPage(0);
-  }, [kwApplied, kinds, sortKey, sortAsc, showAll, prefs.columns, prefs.rows]);
+  }, [kwApplied, kinds, sortKey, sortAsc, showAll, prefs.columns, prefs.rows, prefs.mode]);
+
+  // 翻页/跳页/改筛选后回到当前页顶部（列表会换成另一批数据，滚动位置不能停在上一页）
+  useEffect(() => {
+    if (!paged) return;
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [safePage, paged, kwApplied, kinds, sortKey, sortAsc, showAll, prefs.columns, prefs.rows]);
+
+  const openJump = () => {
+    setJumpText(String(safePage + 1));
+    setJumpOpen(true);
+  };
+
+  const doJump = () => {
+    const n = parseInt(jumpText.trim(), 10);
+    if (Number.isFinite(n)) setPage(Math.max(0, Math.min(pageCount - 1, n - 1)));
+    setJumpOpen(false);
+  };
+
+  const scrollTop = () => listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  const scrollBottom = () => {
+    const totalRows = Math.ceil(rows.length / numColumns);
+    const height = spacing.m * 2 + totalRows * tileSize + Math.max(0, totalRows - 1) * spacing.s;
+    listRef.current?.scrollToOffset({ offset: height, animated: true });
+  };
 
   return (
     <View style={styles.screen}>
@@ -356,20 +412,25 @@ export default function ItemsScreen({ navigation }: any) {
       ) : (
         <View style={{ flex: 1 }}>
           <FlatList
-            key={`grid-${numColumns}`}
+            ref={listRef}
+            key={`grid-${numColumns}-${prefs.mode}`}
             style={{ flex: 1 }}
-            data={pageRows}
+            data={listData}
             numColumns={numColumns}
             keyExtractor={(r) => r.key}
             renderItem={renderItem}
             contentContainerStyle={{ padding: spacing.m, gap: spacing.s }}
             columnWrapperStyle={{ gap: spacing.s }}
+            getItemLayout={getItemLayout}
             initialNumToRender={40}
             maxToRenderPerBatch={40}
             windowSize={7}
             removeClippedSubviews
+            ListFooterComponent={
+              !paged && rows.length > 0 ? <Text style={styles.listEnd}>共 {rows.length} 个物品 · 已经到底了</Text> : null
+            }
           />
-          {pageCount > 1 ? (
+          {paged && pageCount > 1 ? (
             <View style={styles.pager}>
               <TouchableOpacity
                 style={[styles.pageBtn, safePage === 0 && styles.pageBtnOff]}
@@ -378,9 +439,13 @@ export default function ItemsScreen({ navigation }: any) {
               >
                 <Ionicons name="chevron-back" size={16} color={colors.textDim} />
               </TouchableOpacity>
-              <Text style={styles.pageText}>
-                第 {safePage + 1} / {pageCount} 页 · 共 {rows.length} 个
-              </Text>
+              {/* 点页码弹出跳页输入框 */}
+              <TouchableOpacity style={styles.jumpBtn} onPress={openJump} hitSlop={6}>
+                <Text style={styles.pageText}>
+                  第 {safePage + 1} / {pageCount} 页 · 共 {rows.length} 个
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={colors.textFaint} />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.pageBtn, safePage >= pageCount - 1 && styles.pageBtnOff]}
                 disabled={safePage >= pageCount - 1}
@@ -390,8 +455,52 @@ export default function ItemsScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
           ) : null}
+          {/* 无限下滑：右下角一键回顶 / 到底（超过两行才值得显示） */}
+          {!paged && rows.length > numColumns * 2 ? (
+            <View style={styles.floatCol}>
+              <TouchableOpacity style={styles.floatBtn} onPress={scrollTop} activeOpacity={0.75}>
+                <Ionicons name="arrow-up" size={19} color={colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.floatBtn} onPress={scrollBottom} activeOpacity={0.75}>
+                <Ionicons name="arrow-down" size={19} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       )}
+
+      {/* 跳页弹层 */}
+      <Modal visible={jumpOpen} transparent animationType="fade" onRequestClose={() => setJumpOpen(false)}>
+        <View style={styles.modalMask}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setJumpOpen(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>跳转到页码</Text>
+            <Text style={styles.modalHint}>
+              输入 1 – {pageCount} 之间的页码，当前是第 {safePage + 1} 页
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={jumpText}
+              onChangeText={setJumpText}
+              keyboardType="number-pad"
+              autoFocus
+              selectTextOnFocus
+              placeholder={`1 – ${pageCount}`}
+              placeholderTextColor={colors.textFaint}
+              onSubmitEditing={doJump}
+              returnKeyType="go"
+            />
+            <View style={{ flexDirection: 'row', gap: spacing.s }}>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalCancel]} onPress={() => setJumpOpen(false)}>
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalOk]} onPress={doJump}>
+                <Text style={styles.modalOkText}>跳转</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -480,12 +589,79 @@ const styles = themedStyles((colors) => ({
   },
   pageBtnOff: { opacity: 0.35 },
   pageText: { color: colors.textDim, fontSize: 12, fontWeight: '600' },
+  jumpBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.m,
+    paddingVertical: 8,
+    borderRadius: radius.m,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  floatCol: {
+    position: 'absolute',
+    right: spacing.l,
+    bottom: spacing.l,
+    gap: spacing.s,
+  },
+  floatBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceHigh,
+    borderWidth: 1,
+    borderColor: colors.border,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  listEnd: { color: colors.textFaint, fontSize: 11, textAlign: 'center', paddingVertical: spacing.l },
+  modalMask: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 330,
+    backgroundColor: colors.surface,
+    borderRadius: radius.l,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.l,
+    gap: spacing.m,
+  },
+  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  modalHint: { color: colors.textFaint, fontSize: 12, lineHeight: 17 },
+  modalInput: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.m,
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    paddingHorizontal: spacing.m,
+    paddingVertical: 10,
+    textAlign: 'center',
+  },
+  modalBtn: { flex: 1, borderRadius: radius.m, paddingVertical: 11, alignItems: 'center' },
+  modalCancel: { backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border },
+  modalCancelText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
+  modalOk: { backgroundColor: colors.accent },
+  modalOkText: { color: colors.bg, fontSize: 14, fontWeight: '700' },
 }));
 
 const tileStyles = themedStyles((colors) => ({
   tile: {
-    flex: 1,
-    aspectRatio: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,

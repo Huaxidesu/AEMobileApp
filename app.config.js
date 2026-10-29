@@ -2,7 +2,7 @@ module.exports = {
   "expo": {
     "name": "AEMobile",
     "slug": "AEMobile",
-    "version": "3.0.0",
+    "version": "3.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,7 +21,7 @@ module.exports = {
         "backgroundColor": "#ffffff",
       },
       "package": "dev.youtiao.aemonitor",
-      "versionCode": 30
+      "versionCode": 31
     },
     "web": {
       "favicon": "./assets/favicon.png"
