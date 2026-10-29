@@ -14,6 +14,7 @@ import { ToastHost } from './src/toast';
 import { themedStyles, useTheme, currentPalette, spacing } from './src/theme';
 import { ThemeProvider } from './src/theme';
 import { GridProvider } from './src/gridprefs';
+import { ChatPrefsProvider } from './src/chatprefs';
 import { getAuxSignature, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
 import { clearDbCaches } from './src/db';
 import { attachAux, ensureNameIndex } from './src/dbs';
@@ -29,7 +30,9 @@ export default function App() {
       <SafeAreaProvider>
         <ThemeProvider>
           <GridProvider>
-            <AppBody />
+            <ChatPrefsProvider>
+              <AppBody />
+            </ChatPrefsProvider>
           </GridProvider>
         </ThemeProvider>
       </SafeAreaProvider>

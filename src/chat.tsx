@@ -69,11 +69,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   /** 已入册的消息键，重连补发时用来去重 */
   const seen = useRef<Set<string>>(new Set());
   const activeRef = useRef(false);
-  const nameRef = useRef('');
   /** 下次订阅要带的游标 */
   const cursor = useRef({ since: 0, boot: 0 });
-
-  nameRef.current = name;
 
   // 昵称跟账号走：切账号时重新读
   useEffect(() => {
@@ -109,6 +106,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const stream = openStream(config as ServerConfig, 'chat', {
       since: cursor.current.since,
       boot: cursor.current.boot,
+      // 新 App 才收玩家进出事件；老服务端会忽略这个参数
+      events: 1,
     });
 
     stream.addEventListener('open', () => {
@@ -141,7 +140,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       appendAll(incoming);
       setMsgs((prev) => merge(prev, incoming));
       if (!activeRef.current) {
-        const fresh = incoming.filter((m) => !(m.kind === 1 && m.name === nameRef.current)).length;
+        // 玩家进出提示（kind 2/3）不占未读，自己的消息也不占
+        const fresh = incoming.filter((m) => m.kind === 0).length;
         if (fresh > 0) setUnread((u) => u + fresh);
       }
     });

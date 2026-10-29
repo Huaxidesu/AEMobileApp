@@ -1,7 +1,8 @@
-// 聊天页：游戏内公屏 ↔ 手机双向。
+// 聊天页：游戏内公屏 ↔ 手机双向，Telegram 式气泡。
 //
 // 消息状态全在 ChatProvider（常驻订阅 + 7 天本地缓存），这里只负责渲染和发送。
-// 首次进入必须先设昵称（游戏里显示成 [AEMobile][昵称]），之后可以在页头或设置里改。
+// 分组/日期/系统行由 chatgroup.ts（纯函数，有单测）算好，展示交给 chatview.tsx，
+// 这样「聊天外观」设置里的预览和真实页面用的是同一套组件。
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -12,46 +13,50 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useChat } from '../chat';
-import type { ChatMessage } from '../chat';
+import { useChatPrefs } from '../chatprefs';
+import { buildRows } from '../chatgroup';
+import type { ChatRow } from '../chatgroup';
+import { DayDivider, MessageGroup, SystemLine } from '../chatview';
+import { SkinHead } from '../components/SkinHead';
 import { showToast } from '../toast';
 import { themedStyles, useTheme, spacing, radius } from '../theme';
 
 const MAX_TEXT = 200;
 
-function timeLabel(ts: number): string {
-  const d = new Date(ts);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const today = new Date();
-  const sameDay =
-    d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-  return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
-}
-
 export default function ChatScreen({ navigation }: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const win = useWindowDimensions();
+  const { prefs } = useChatPrefs();
   const { msgs, status, error, gap, name, send, setActive, clear } = useChat();
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
-  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const listRef = useRef<FlatList<ChatRow>>(null);
+  /** 用户是否贴着底部：贴底时来新消息才自动跟随，往上翻历史时不打扰 */
+  const atBottom = useRef(true);
 
-  // 未读只在「没看这一页」时累加
   useFocusEffect(
     useCallback(() => {
       setActive(true);
+      // 进页面直接看最新一条（历史是异步载入的，onContentSizeChange 会再兜一次）
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
       return () => setActive(false);
     }, [setActive]),
   );
 
-  /** inverted 列表要「新的在下面」，所以倒序喂进去 */
-  const data = useMemo(() => msgs.slice().reverse(), [msgs]);
+  const rows = useMemo<ChatRow[]>(() => {
+    const all = buildRows(msgs, { mine: name });
+    return prefs.showJoinLeave ? all : all.filter((r) => r.type !== 'system');
+  }, [msgs, name, prefs.showJoinLeave]);
+
+  const maxBubbleWidth = Math.round((win.width * prefs.bubbleMaxWidth) / 100);
 
   const onSend = useCallback(async () => {
     const text = draft.trim();
@@ -60,6 +65,7 @@ export default function ChatScreen({ navigation }: any) {
     try {
       await send(text);
       setDraft('');
+      atBottom.current = true;
     } catch (e: any) {
       showToast(String(e?.message ?? '发送失败'), 'bad');
     } finally {
@@ -96,7 +102,7 @@ export default function ChatScreen({ navigation }: any) {
           </View>
         </View>
         <Pressable style={styles.nameChip} onPress={() => navigation.navigate('ChatName')}>
-          <Ionicons name="person-circle-outline" size={15} color={colors.accent} />
+          <SkinHead name={name} size={18} kind={1} />
           <Text style={styles.nameText} numberOfLines={1}>
             {name}
           </Text>
@@ -108,11 +114,18 @@ export default function ChatScreen({ navigation }: any) {
 
       <FlatList
         ref={listRef}
-        data={data}
-        inverted
-        keyExtractor={(m) => `${m.boot}:${m.seq}`}
-        contentContainerStyle={{ paddingHorizontal: spacing.l, paddingVertical: spacing.m, flexGrow: 1 }}
+        data={rows}
+        keyExtractor={(r) => r.key}
+        contentContainerStyle={{ paddingTop: spacing.s, paddingBottom: spacing.m, flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
+        onScroll={(e) => {
+          const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+          atBottom.current = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 48;
+        }}
+        scrollEventThrottle={64}
+        onContentSizeChange={() => {
+          if (atBottom.current) listRef.current?.scrollToEnd({ animated: false });
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="chatbubbles-outline" size={34} color={colors.textFaint} />
@@ -120,7 +133,11 @@ export default function ChatScreen({ navigation }: any) {
             <Text style={styles.emptyHint}>游戏里的公屏会实时出现在这里</Text>
           </View>
         }
-        renderItem={({ item }) => <Bubble msg={item} mine={item.kind === 1 && item.name === name} />}
+        renderItem={({ item }) => {
+          if (item.type === 'day') return <DayDivider label={item.label} />;
+          if (item.type === 'system') return <SystemLine msg={item.msg} join={item.join} />;
+          return <MessageGroup row={item} prefs={prefs} maxBubbleWidth={maxBubbleWidth} />;
+        }}
       />
 
       {gap ? (
@@ -149,22 +166,6 @@ export default function ChatScreen({ navigation }: any) {
         </Pressable>
       </View>
     </KeyboardAvoidingView>
-  );
-}
-
-function Bubble({ msg, mine }: { msg: ChatMessage; mine: boolean }) {
-  const { colors } = useTheme();
-  return (
-    <View style={[styles.bubbleRow, mine && { justifyContent: 'flex-end' }]}>
-      <View style={{ maxWidth: '82%' }}>
-        <Text style={[styles.meta, mine && { textAlign: 'right' }]}>
-          {mine ? '我' : msg.name} · {timeLabel(msg.ts)}
-        </Text>
-        <View style={[styles.bubble, mine ? { backgroundColor: colors.accentSoft } : { backgroundColor: colors.surfaceAlt }]}>
-          <Text style={[styles.bubbleText, mine && { color: colors.text }]}>{msg.text}</Text>
-        </View>
-      </View>
-    </View>
   );
 }
 
@@ -224,21 +225,17 @@ const styles = themedStyles((colors) => ({
   nameChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: radius.full,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    maxWidth: 120,
+    maxWidth: 140,
   },
   nameText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   iconBtn: { padding: 6 },
-  bubbleRow: { flexDirection: 'row', marginBottom: spacing.m },
-  meta: { color: colors.textFaint, fontSize: 10, marginBottom: 3, marginHorizontal: 4 },
-  bubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.m },
-  bubbleText: { color: colors.text, fontSize: 14, lineHeight: 20 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60, gap: 6 },
   emptyText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
   emptyHint: { color: colors.textFaint, fontSize: 11 },
