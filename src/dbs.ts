@@ -17,11 +17,18 @@ export async function attachAux(db: SQLiteDatabase): Promise<void> {
     const path = auxDbPath(name as PackKind);
     if (!path) continue;
     try {
-      const info = await FileSystem.getInfoAsync(path);
-      if (!info.exists) continue;
+      // 注意：ATTACH 要的是裸路径，但 FileSystem 只认 file:// URI。
+      // 之前这里直接拿裸路径调 getInfoAsync，永远 exists=false，辅助库其实一次都没挂上。
+      const uri = path.startsWith('file://') ? path : `file://${path}`;
+      const info = await FileSystem.getInfoAsync(uri);
+      if (!info.exists) {
+        console.warn('[AEMobile][attach-missing]', name, uri);
+        continue;
+      }
       await db.execAsync(`ATTACH DATABASE '${path}' AS ${name}`);
-    } catch {
+    } catch (e) {
       // 已经挂过，或文件坏了：查询会走兜底（图标空白、名字用服务端给的英文名）
+      console.warn('[AEMobile][attach-fail]', name, path, String(e));
     }
   }
 }

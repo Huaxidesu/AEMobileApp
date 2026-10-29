@@ -100,10 +100,12 @@ export interface FluidRef {
 }
 
 const fluidCache = new Map<string, FluidRef | null>();
-/** 源质：tag → { 中文名, base64 图标 }（来自 essentia.db，ATTACH 成 essentia） */
-const aspectCache = new Map<string, { dname: string; icon: string | null } | null>();
+/** 源质：tag → { 中文名, base64 图标, 是否需要现染 }（来自 essentia.db，ATTACH 成 essentia） */
+const aspectCache = new Map<string, { dname: string; icon: string | null; tint: boolean } | null>();
 /** 流体中文名（fluids.db 的 fluid_name 表），查不到返回 null */
 const fluidNameCache = new Map<string, string | null>();
+/** 流体图标（fluids.db 的 fluid_icon 表）：tint=1 表示这张图是灰度蒙版，要用颜色现染 */
+const fluidIconCache = new Map<string, { icon: string | null; tint: boolean } | null>();
 
 /** 图标库被在线更新替换后必须调用，否则会继续命中旧库的图标/名称 */
 export function clearDbCaches(): void {
@@ -111,23 +113,37 @@ export function clearDbCaches(): void {
   fluidCache.clear();
   aspectCache.clear();
   fluidNameCache.clear();
+  fluidIconCache.clear();
 }
 
 /** 源质图标/名字：essentia.db 的 aspect 表（tag 统一小写） */
-export function lookupAspect(db: SQLiteDatabase, tag: string): { dname: string; icon: string | null } | null {
+export function lookupAspect(db: SQLiteDatabase, tag: string): { dname: string; icon: string | null; tint: boolean } | null {
   const key = tag.toLowerCase();
   if (aspectCache.has(key)) return aspectCache.get(key)!;
-  let row: { dname: string; icon: Uint8Array | null } | null = null;
+  let row: { dname: string; icon: Uint8Array | null; tint?: number | null } | null = null;
   try {
-    row = db.getFirstSync<{ dname: string; icon: Uint8Array | null }>(
-      'select dname, icon from essentia.aspect where tag = $tag limit 1',
+    row = db.getFirstSync<{ dname: string; icon: Uint8Array | null; tint: number | null }>(
+      'select dname, icon, tint from essentia.aspect where tag = $tag limit 1',
       { $tag: key },
     );
   } catch {
-    // 辅助库没挂上：源质退回服务端给的英文名 + 问号图标
+    // 老版本图标库没有 tint 列（图标一律是白模）
+    try {
+      row = db.getFirstSync<{ dname: string; icon: Uint8Array | null }>(
+        'select dname, icon from essentia.aspect where tag = $tag limit 1',
+        { $tag: key },
+      );
+    } catch {
+      // 辅助库没挂上：源质退回服务端给的英文名 + 问号图标
+    }
   }
   const ref = row
-    ? { dname: row.dname, icon: row.icon && row.icon.length ? toBase64(row.icon) : null }
+    ? {
+        dname: row.dname,
+        icon: row.icon && row.icon.length ? toBase64(row.icon) : null,
+        // tint=0 表示建库时已经把颜色烘进 PNG 了，别再 tint 一遍（会变成双重变暗）
+        tint: (row.tint ?? 1) !== 0,
+      }
     : null;
   aspectCache.set(key, ref);
   return ref;
@@ -152,6 +168,33 @@ export function lookupFluidName(db: SQLiteDatabase, fluid: string): string | nul
   else if (name && /^plasma\./i.test(key)) name = '等离子' + name;
   fluidNameCache.set(key, name);
   return name;
+}
+
+/**
+ * 流体图标：fluids.db 的 fluid_icon 表。
+ *
+ * 图标是 mods 里 `textures/blocks/fluids/*.png` 抽出来的，按 16×16 缩放成 64px。
+ * `tint=1` 表示建库时没拿到颜色（`/aemobile dumpcolors` 没跑过），图是灰度蒙版，
+ * 要用服务端 NBT 里的 Color 现染——和源质那套一样。
+ */
+export function lookupFluidIcon(db: SQLiteDatabase, fluidName: string): { icon: string | null; tint: boolean } | null {
+  const key = fluidName.toLowerCase();
+  if (fluidIconCache.has(key)) return fluidIconCache.get(key)!;
+  let row: { icon: Uint8Array | null; tint: number | null } | null = null;
+  try {
+    row = db.getFirstSync<{ icon: Uint8Array | null; tint: number | null }>(
+      'select icon, tint from fluids.fluid_icon where fluid = $f limit 1',
+      { $f: key },
+    );
+  } catch (e) {
+    // 老版本图标库里没有 fluid_icon 表：退回「纯色方块 + 水滴」
+    console.warn('[AEMobile][fluid-icon-fail]', key, String(e));
+  }
+  const ref = row && row.icon && row.icon.length
+    ? { icon: toBase64(row.icon), tint: (row.tint ?? 0) !== 0 }
+    : null;
+  fluidIconCache.set(key, ref);
+  return ref;
 }
 
 export function lookupFluid(db: SQLiteDatabase, fluidName: string): FluidRef | null {
@@ -195,7 +238,7 @@ export interface ResolvedItem {
   isEssentia?: boolean;
   /** 流体的颜色（0xRRGGBB），UI 画「纯色方块 + 水滴」用 */
   fluidColor?: number | null;
-  /** 源质的颜色（CSS 色值），UI 用它给白色蒙版贴图上色 */
+  /** 蒙版贴图的上色（CSS 色值）：源质白模，或没烘过颜色的流体灰度图 */
   aspectTint?: string | null;
 }
 
@@ -222,7 +265,8 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
     const tag = nbtobj?.['comp>']?.['str>Aspect'] as string | undefined;
     // 贴图键统一小写（GT 的源质贴图是大写文件名），数据在 essentia.db
     const info = tag ? lookupAspect(db, tag) : null;
-    // 源质贴图是白色蒙版，颜色由服务端给的 Color（Aspect.getColor）决定，UI 用 tintColor 上色
+    // 源质贴图是白色蒙版，颜色由服务端给的 Color（Aspect.getColor）决定，UI 用 tintColor 上色；
+    // 但图标库如果把颜色烘进 PNG 了（tint=0），就不能再染一遍
     const c = readFluidColor(nbtobj);
     const tint = c != null ? `#${c.toString(16).padStart(6, '0')}` : null;
     if (info) {
@@ -234,22 +278,22 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
         dname: info.dname,
         icon: info.icon,
         isEssentia: true,
-        aspectTint: tint,
+        aspectTint: info.tint ? tint : null,
       };
     }
     const fallback = nbtobj?.['comp>']?.['str>Name'] as string | undefined;
     // 少数附属模组的要素没有贴图（custom1-5 / caelum / tabernus / terminus），
     // 用 TC4 的 _unknown 图标兜底，别显示成「禁止」占位
-    const unknown = lookupAspect(db, '_unknown')?.icon ?? null;
+    const unknownRef = lookupAspect(db, '_unknown');
     return {
       name,
       meta,
       nbt: raw.nbt,
       nbtobj,
       dname: fallback ?? tag ?? '源质',
-      icon: unknown,
+      icon: unknownRef?.icon ?? null,
       isEssentia: true,
-      aspectTint: tint,
+      aspectTint: unknownRef && unknownRef.tint ? tint : null,
     };
   }
 
@@ -263,8 +307,9 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
     isFluid = !!fluid;
     const ref = fluid ? lookupFluid(db, fluid) : null;
     if (fluid) {
-      // 流体一律用「纯色方块 + 水滴」当图标（和游戏里 AE 终端一致），不再借容器的图标
+      // 图标：fluids.db 的 fluid_icon（从 mods 的 fluid 贴图烘出来的），没有就退回「纯色方块 + 水滴」
       fluidColor = readFluidColor(nbtobj);
+      const iconRef = lookupFluidIcon(db, fluid);
       original_name = name;
       original_meta = meta;
       if (ref) {
@@ -284,9 +329,13 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
         nbt: raw.nbt,
         nbtobj,
         dname: dname ?? loadedFluid.dname,
-        icon: null,
+        icon: iconRef?.icon ?? null,
         isFluid: true,
         fluidColor,
+        // 灰度贴图（没烘过颜色）就用服务端给的颜色现染，和源质一样
+        aspectTint: iconRef?.tint && fluidColor != null
+          ? `#${fluidColor.toString(16).padStart(6, '0')}`
+          : null,
       };
     }
   }
