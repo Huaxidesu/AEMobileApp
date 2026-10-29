@@ -51,4 +51,3 @@
 ## 其它
 
 - 需要 Android 8 以上；局域网/公网直连，走 mod 的 TCP 端口（默认 44444）
-- 图标素材版权归各自模组作者所有（GregTech、Thaumcraft 及各 GTNH 模组）
