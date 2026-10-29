@@ -232,13 +232,26 @@ export async function resolveActiveDb(): Promise<string | null> {
     const name = getActiveName(kind);
     if (!name) continue;
     const info = await FileSystem.getInfoAsync(`${DB_DIR}${name}`);
-    if (!info.exists) setActiveName(kind, builtinName(kind));
+    if (!info.exists) {
+      setActiveName(kind, builtinName(kind));
+      // 回落到内置库：但内置包可能因为「之前用的是在线包」被跳过了解压，这里补一次
+      if (name !== builtinName(kind)) await materializeBundledPacks(kind, true);
+    }
   }
   return getActiveDb();
 }
 
-/** 把编译期内置的包复制到 SQLite 目录（幂等，按大小判断） */
-async function materializeBundledPacks(): Promise<void> {
+/**
+ * 把编译期内置的包复制到 SQLite 目录（幂等）。
+ *
+ * 2026-10-29 修：以前每次启动都无条件 `Asset.downloadAsync()` 一遍内置包 ——
+ * 内置物品库 194MB，实测这一句吃掉 **895ms**（整个启动才 1s）。
+ * 现在两道短路：
+ *   ① 当前用的是在线包 → 内置包根本不会被打开，直接跳过；
+ *   ② 落地过的内置包 sha 记在 SecureStore 里，sha 没变且文件在 → 跳过。
+ * 只有「首次安装」和「APK 换了内置库」才真的去解压。
+ */
+async function materializeBundledPacks(only?: PackKind, force = false): Promise<void> {
   if (!PACK_KINDS.some((k) => BUNDLED_PACKS[k])) return;
   try {
     await FileSystem.makeDirectoryAsync(DB_DIR, { intermediates: true });
@@ -246,18 +259,33 @@ async function materializeBundledPacks(): Promise<void> {
     // 已存在
   }
   for (const kind of PACK_KINDS) {
+    if (only && kind !== only) continue;
     const pack = BUNDLED_PACKS[kind];
     if (!pack) continue;
     const target = `${DB_DIR}${kind}.db`;
+    // 键里带 v2：v1 的标记有「按大小跳过复制」的 bug，可能记着一个其实没落地的 sha，
+    // 换键名让所有老标记失效，强制重新落地一次
+    const markKey = `pack.v2.bundled.${kind}.sha`;
     try {
+      if (!force) {
+        // ① 用的是在线包，内置包用不上
+        const active = getActiveName(kind);
+        if (active && active !== builtinName(kind)) continue;
+        // ② 同一个内置包已经落地过
+        if (SecureStore.getItem(markKey) === pack.sha256) {
+          const info = await FileSystem.getInfoAsync(target);
+          if (info.exists) continue;
+        }
+      }
       const asset = Asset.fromModule(pack.asset);
       await asset.downloadAsync();
       const src = asset.localUri;
       if (!src) continue;
-      const srcInfo = await FileSystem.getInfoAsync(src);
-      const dstInfo = await FileSystem.getInfoAsync(target);
-      if (dstInfo.exists && dstInfo.size === (srcInfo.exists ? srcInfo.size : -1)) continue;
+      // 走到这里说明「内置包的 sha 和上次落地的不一样」，必须复制。
+      // 以前还比了一次文件大小，结果 size 恰好相同的更新被跳过、标记却写成了新的，
+      // 设备上就永远留着旧库（2026-10-29 实测：fluids.db 新旧都是 2007040 字节）。
       await FileSystem.copyAsync({ from: src, to: target });
+      SecureStore.setItem(markKey, pack.sha256);
     } catch {
       // 复制失败就当没有内置包
     }

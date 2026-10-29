@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import RootNavigator from './src/navigation';
@@ -15,7 +15,11 @@ import { ThemeProvider } from './src/theme';
 import { GridProvider } from './src/gridprefs';
 import { getAuxSignature, resolveActiveDb, subscribeActiveDb } from './src/iconpack';
 import { clearDbCaches } from './src/db';
-import { attachAux } from './src/dbs';
+import { attachAux, ensureNameIndex } from './src/dbs';
+import { perfLog } from './src/perf';
+
+/** 模块加载时刻（≈ JS 主线程启动），用来量启动各段的耗时 */
+const BOOT_T0 = Date.now();
 
 /** 根组件只负责挂 Provider：主题与布局偏好要在任何界面（含启动页）之前就绪 */
 export default function App() {
@@ -53,8 +57,10 @@ function AppBody() {
   const [auxReady, setAuxReady] = useState(false);
 
   const refresh = useCallback(() => {
+    const t0 = Date.now();
     resolveActiveDb()
       .then((name) => {
+        perfLog('boot.resolveDb', `${name ?? 'none'} · ${Date.now() - t0}ms · 总计 ${Date.now() - BOOT_T0}ms`);
         clearDbCaches();
         setDbError(null);
         setDbName(name);
@@ -98,11 +104,16 @@ function AppBody() {
             <SQLiteProvider
               key={`${dbName}|${auxSig}`}
               databaseName={dbName}
-              onInit={attachAux}
+              // attachAux 在「库已打开」之后才跑，所以它的耗时点也就是 SQLite 打开完成点
+              onInit={async (db) => {
+                const t0 = Date.now();
+                await attachAux(db);
+                perfLog('boot.dbOpen+attach', `${Date.now() - t0}ms · 总计 ${Date.now() - BOOT_T0}ms`);
+              }}
               onError={openDbFailed}
             >
               <ConfigProvider>
-                <AppShell onReady={() => setBooted(true)} />
+                <AppShell dbName={dbName} onReady={() => setBooted(true)} />
               </ConfigProvider>
             </SQLiteProvider>
           ) : null}
@@ -112,12 +123,26 @@ function AppBody() {
   );
 }
 
-function AppShell({ onReady }: { onReady: () => void }) {
+function AppShell({ dbName, onReady }: { dbName: string; onReady: () => void }) {
   const { colors } = useTheme();
   const { ready } = useConfig();
+  const db = useSQLiteContext();
   useEffect(() => {
-    if (ready) onReady();
+    if (ready) {
+      perfLog('boot.ready', `总计 ${Date.now() - BOOT_T0}ms`);
+      onReady();
+    }
   }, [ready, onReady]);
+
+  // 覆盖索引延后建：194MB 库上建一次要 1–2 秒，别和首屏抢数据库
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setTimeout(() => {
+      const t0 = Date.now();
+      ensureNameIndex(db, dbName).then(() => perfLog('db.ensureNameIndex', `${Date.now() - t0}ms`));
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [ready, db, dbName]);
   return (
     <>
       {/* 状态栏不透明：内容永远不会滚到状态栏底下；新版 Android 强制边到边时由各屏的 insets 兜底 */}
