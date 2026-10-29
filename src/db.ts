@@ -136,6 +136,11 @@ export function readFluidName(nbtobj: any): string | undefined {
 
 /** 源质（神秘时代）在物品列表里的统一 name */
 export const ESSENTIA = 'thaumicenergistics:essentia';
+/**
+ * GTNH 的 Aspect Recipe Index 把要素做成了**真物品**（NBT 里 `{Aspect:"aer"}`），
+ * NEI 里看到的「Aer / aspectrecipeindex:aspect」就是它。图标和中文名同样来自 essentia.db。
+ */
+export const ASPECT_ITEM = 'aspectrecipeindex:aspect';
 
 /** 服务端塞在流体 NBT 里的颜色（0xRRGGBB），App 用它画纯色流体图标 */
 export function readFluidColor(nbtobj: any): number | null {
@@ -574,6 +579,32 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
       isEssentia: true,
       tint: unknownRef && unknownRef.tint ? tint : null,
     });
+  }
+
+  // ARI 的要素物品：name 固定、靠 NBT 里的 Aspect 区分。
+  // 注意这里**不改 name/meta**——下单时要原样发回去（服务端按 ItemStack + NBT 建栈），
+  // 和流体滴「换成容器物品显示」的套路相反。
+  if (name === ASPECT_ITEM && raw.nbt) {
+    try {
+      nbtobj = NBT.Reader(base64ToArrayBuffer(raw.nbt));
+    } catch {
+      nbtobj = undefined;
+    }
+    const tag = nbtobj?.['comp>']?.['str>Aspect'] as string | undefined;
+    const info = tag ? lookupAspect(db, tag) : null;
+    if (info) {
+      const c = readFluidColor(nbtobj);
+      return new ResolvedItem(db, {
+        name,
+        meta,
+        nbt: raw.nbt,
+        nbtobj,
+        dname: info.dname,
+        icon: info.icon,
+        isEssentia: true,
+        tint: info.tint && c != null ? hexColor(c) : null,
+      });
+    }
   }
 
   if (name.includes('ae2fc') && raw.nbt) {

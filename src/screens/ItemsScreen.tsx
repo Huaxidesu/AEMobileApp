@@ -280,8 +280,11 @@ export default function ItemsScreen({ navigation }: any) {
           navigation.navigate('ItemDetail', {
             // 详情页只需要这几个字段，传个干净的普通对象过去（别把惰性 getter 一起带过去）
             item: {
-              name: item.res.name,
-              meta: item.res.meta,
+              // ⚠️ 流体行在 resolveItem 里已经被换成了「容器物品」（单元/桶）**只为了显示**。
+              // 下单必须用原始的 ae2fc 流体滴：传容器物品过去，服务端会去算「硫酸单元」的配方，
+              // 那个配方在 AE 里不存在，计划直接失败（2026-10-29 之前就是这样）。
+              name: item.res.original_name ?? item.res.name,
+              meta: item.res.original_meta ?? item.res.meta,
               nbt: item.res.nbt ?? undefined,
               count: item.count,
               craftable: item.craftable,
