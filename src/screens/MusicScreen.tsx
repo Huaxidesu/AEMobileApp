@@ -61,7 +61,19 @@ function friendly(code: string, lines: string[]): string {
     case 'MUSIC_DISABLED':
       return '服务器没有开启音乐功能（config 的 [music] enabled=false）。';
     case 'MUSIC_UNAVAILABLE':
-      return '连不上代理上的 AEMobileMusicBridge（检查插件是否启用、端口/密钥是否一致）。';
+      return '连不上代理上的 AEMobileBridge（检查插件是否启用、端口/密钥是否一致）。';
+    case 'BRIDGE_UNAVAILABLE':
+      return '连不上代理上的 AEMobileBridge（检查插件是否启用、host/port 是否可达）。';
+    case 'BRIDGE_DISABLED':
+      return '服务器没有开启通用命令桥（config 的 [bridge] enabled=false）。';
+    case 'BAD_SECRET':
+      return '命令桥密钥不一致：后端 [bridge] secret 和 BC 插件 config.yml 的 secret 要相同。';
+    case 'BAD_PLAYER':
+      return '玩家名不合法，无法以该身份执行命令。';
+    case 'COMMAND_NOT_ALLOWED:music':
+      return '桥接插件没有允许 music 命令（config.yml 的 allow-commands 加上 music）。';
+    case 'UNKNOWN_COMMAND':
+      return '服务器没有这个命令：确认 AllMusic 已安装在 BC 代理上。';
     case 'MUSIC_NO_RESPONSE':
     case 'MUSIC_BAD_RESPONSE':
       return '音乐桥没有返回有效结果，请稍后再试。';
