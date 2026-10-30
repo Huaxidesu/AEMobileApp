@@ -44,9 +44,8 @@ export function SkinHead({
         if (alive && w > 0) setSkinWidth(w);
       },
       () => {
-        if (!alive) return;
-        setFailed(true);
-        invalidateAvatar(name);
+        // 有些 Android 版本对 file:// 取尺寸会失败：按 64×64 处理，
+        // 不能让「取不到尺寸」把整个头像变成默认字母图。
       },
     );
     return () => {
