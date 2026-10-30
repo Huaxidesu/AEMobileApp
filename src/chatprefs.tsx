@@ -17,6 +17,8 @@ export interface ChatPrefs {
   timeMode: ChatTimeMode;
   /** 是否显示玩家加入/退出提示 */
   showJoinLeave: boolean;
+  /** 是否显示玩家完成成就的提示 */
+  showAchievements: boolean;
 }
 
 export const CHAT_LIMITS = {
@@ -32,6 +34,7 @@ export const DEFAULT_CHAT: ChatPrefs = {
   density: 'standard',
   timeMode: 'inside',
   showJoinLeave: true,
+  showAchievements: true,
 };
 
 /** 三档密度对应的尺寸（页面上只说「紧凑/标准/宽松」） */
@@ -62,6 +65,7 @@ function normalize(p: Partial<ChatPrefs> | null | undefined): ChatPrefs {
     density,
     timeMode,
     showJoinLeave: p?.showJoinLeave !== false,
+    showAchievements: p?.showAchievements !== false,
   };
 }
 
@@ -82,6 +86,7 @@ interface ChatPrefsCtx {
   setDensity: (d: ChatDensity) => void;
   setTimeMode: (m: ChatTimeMode) => void;
   setShowJoinLeave: (v: boolean) => void;
+  setShowAchievements: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -109,6 +114,7 @@ export function ChatPrefsProvider({ children }: { children: React.ReactNode }) {
       setDensity: (d) => update({ ...prefs, density: d }),
       setTimeMode: (m) => update({ ...prefs, timeMode: m }),
       setShowJoinLeave: (v) => update({ ...prefs, showJoinLeave: v }),
+      setShowAchievements: (v) => update({ ...prefs, showAchievements: v }),
       reset: () => update(DEFAULT_CHAT),
     }),
     [prefs, update],
@@ -128,6 +134,7 @@ export function useChatPrefs(): ChatPrefsCtx {
       setDensity: () => {},
       setTimeMode: () => {},
       setShowJoinLeave: () => {},
+      setShowAchievements: () => {},
       reset: () => {},
     }
   );

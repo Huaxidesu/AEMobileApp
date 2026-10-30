@@ -248,8 +248,7 @@ export async function sendChat(
 /**
  * 音乐：转发给代理上的 AEMobileBridge，由它执行 /music 并私有返回结果。
  * 返回的 lines 已经去掉 AllMusic 前缀和 § 颜色码。
- */
-export interface MusicResult {
+ */export interface MusicResult {
   ok: boolean;
   lines: string[];
   online: boolean;
@@ -268,6 +267,29 @@ export async function sendMusic(
     online: !!res.b?.online,
     message: res.m ?? '',
   };
+}
+
+/**
+ * `@` 补全的候选：在线玩家 + 最近用过的 App 昵称。
+ * 走共享长连接（聊天页本来就连着），失败时静默返回空表，不打断输入。
+ */
+export interface PlayersResp {
+  /** 当前在线的游戏玩家 */
+  mc: string[];
+  /** 最近在 App 里说过话的昵称（服务端内存里只留 64 个） */
+  app: string[];
+}
+
+export async function fetchPlayers(cfg: ServerConfig): Promise<PlayersResp> {
+  try {
+    const res = await tcp.request<{ mc?: string[]; app?: string[] }>(cfg, 'players');
+    return {
+      mc: Array.isArray(res.b?.mc) ? res.b!.mc : [],
+      app: Array.isArray(res.b?.app) ? res.b!.app : [],
+    };
+  } catch {
+    return { mc: [], app: [] };
+  }
 }
 
 /**

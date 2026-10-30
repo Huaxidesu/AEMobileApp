@@ -1,5 +1,7 @@
-// 聊天页的展示组件：日期分隔、玩家进出系统行、Telegram 式消息组。
+// 聊天页的展示组件：日期分隔、系统行（进出 / 成就）、Telegram 式消息组。
 // 聊天页和「聊天外观」预览共用，保证设置里看到的就是实际效果。
+//
+// 正文统一走 McText：还原服务端带过来的 `§` 颜色码，并把 `@我` 高亮成 Telegram 的样子。
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +9,9 @@ import { colorForName } from './avatars';
 import { SkinHead } from './components/SkinHead';
 import { DENSITY } from './chatprefs';
 import type { ChatPrefs } from './chatprefs';
-import type { ChatLike, ChatRow } from './chatgroup';
-import { useTheme, spacing } from './theme';
+import type { ChatLike, ChatRow, SystemVariant } from './chatgroup';
+import { McText } from './mccolor';
+import { useTheme, spacing, alpha } from './theme';
 
 export function timeLabel(ts: number): string {
   const d = new Date(ts);
@@ -28,20 +31,35 @@ export function DayDivider({ label }: { label: string }) {
   );
 }
 
-export function SystemLine({ msg, join }: { msg: ChatLike; join: boolean }) {
+/** 居中系统行：玩家进出、玩家完成成就 */
+export function SystemLine({ msg, variant }: { msg: ChatLike; variant: SystemVariant }) {
   const { colors } = useTheme();
+  const conf =
+    variant === 'achievement'
+      ? { icon: 'trophy' as const, color: colors.warn, tail: '完成了成就' }
+      : variant === 'join'
+        ? { icon: 'arrow-forward-circle' as const, color: colors.ok, tail: '加入了服务器' }
+        : { icon: 'arrow-back-circle' as const, color: colors.textFaint, tail: '离开了服务器' };
+
   return (
     <View style={styles.systemRow}>
-      <Ionicons
-        name={join ? 'arrow-forward-circle' : 'arrow-back-circle'}
-        size={14}
-        color={join ? colors.ok : colors.textFaint}
-      />
-      <Text style={[styles.systemText, { color: colors.textFaint }]} numberOfLines={1}>
-        {msg.name || '未知玩家'} {join ? '加入了服务器' : '离开了服务器'}
+      <Ionicons name={conf.icon} size={14} color={conf.color} />
+      <Text style={[styles.systemText, { color: colors.textFaint }]} numberOfLines={2}>
+        {msg.name || '未知玩家'} {conf.tail}
+        {variant === 'achievement' && msg.text ? (
+          <Text style={{ color: colors.textDim, fontWeight: '600' }}> {msg.text}</Text>
+        ) : null}
       </Text>
     </View>
   );
+}
+
+/** 名字前的身份图标：App / 服务器 / AllMusic */
+function kindIcon(kind: number): { name: any; color: 'textFaint' | 'accent' | 'textDim' } | null {
+  if (kind === 1) return { name: 'phone-portrait', color: 'textFaint' };
+  if (kind === 4) return { name: 'megaphone', color: 'textDim' };
+  if (kind === 5) return { name: 'disc', color: 'accent' };
+  return null;
 }
 
 /** 一组同一发送者的消息（Telegram 的连珠气泡） */
@@ -49,10 +67,13 @@ export function MessageGroup({
   row,
   prefs,
   maxBubbleWidth,
+  me,
 }: {
   row: Extract<ChatRow, { type: 'group' }>;
   prefs: ChatPrefs;
   maxBubbleWidth: number;
+  /** 自己的聊天昵称：正文里 `@我` 会高亮 */
+  me?: string;
 }) {
   const { colors } = useTheme();
   const d = DENSITY[prefs.density];
@@ -61,6 +82,7 @@ export function MessageGroup({
   const isApp = row.kind === 1;
   const nameColor = colorForName(row.name);
   const timeSize = Math.max(9, prefs.fontSize - 4);
+  const icon = kindIcon(row.kind);
 
   return (
     <View
@@ -84,8 +106,8 @@ export function MessageGroup({
             <Text style={[styles.nameText, { color: nameColor, fontSize: Math.max(10, prefs.fontSize - 2) }]} numberOfLines={1}>
               {row.name || '未知玩家'}
             </Text>
-            {isApp ? (
-              <Ionicons name="phone-portrait" size={10} color={colors.textFaint} style={{ marginLeft: 3 }} />
+            {icon ? (
+              <Ionicons name={icon.name} size={10} color={(colors as any)[icon.color]} style={{ marginLeft: 3 }} />
             ) : null}
           </View>
         ) : null}
@@ -116,17 +138,19 @@ export function MessageGroup({
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', flexShrink: 1 }}>
-                  <Text
+                  <McText
+                    text={m.text}
                     selectable
+                    highlight={me}
+                    highlightColor={colors.accent}
+                    highlightBg={alpha(colors.accent, 0.22)}
                     style={{
                       color: colors.text,
                       fontSize: prefs.fontSize,
                       lineHeight: Math.round(prefs.fontSize * 1.42),
                       flexShrink: 1,
                     }}
-                  >
-                    {m.text}
-                  </Text>
+                  />
                   {prefs.timeMode === 'inside' ? (
                     <Text style={{ color: colors.textFaint, fontSize: timeSize, marginLeft: 8 }}>{timeLabel(m.ts)}</Text>
                   ) : null}

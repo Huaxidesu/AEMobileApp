@@ -159,6 +159,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             m.kind === 0 ||
             m.kind === 4 ||
             m.kind === 5 ||
+            m.kind === 6 ||
             (m.kind === 1 && m.name !== myNameRef.current),
         ).length;
         if (fresh > 0) setUnread((u) => u + fresh);

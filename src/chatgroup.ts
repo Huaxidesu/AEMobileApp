@@ -8,15 +8,18 @@ export interface ChatLike {
   boot: number;
   seq: number;
   ts: number;
-  /** 0 = 游戏内玩家，1 = 手机 App，2 = 加入，3 = 退出 */
+  /** 0 = 游戏内玩家，1 = 手机 App，2 = 加入，3 = 退出，4 = 服务器，5 = AllMusic，6 = 成就 */
   kind: number;
   name: string;
   text: string;
 }
 
+/** 居中系统行的三种来源 */
+export type SystemVariant = 'join' | 'leave' | 'achievement';
+
 export type ChatRow =
   | { type: 'day'; key: string; ts: number; label: string }
-  | { type: 'system'; key: string; msg: ChatLike; join: boolean }
+  | { type: 'system'; key: string; msg: ChatLike; join: boolean; variant: SystemVariant }
   | {
       type: 'group';
       key: string;
@@ -69,18 +72,22 @@ type GroupRow = Extract<ChatRow, { type: 'group' }> & {
  */
 export function buildRows(
   msgs: ChatLike[],
-  opts: { mine: string; now?: number; showJoinLeave?: boolean },
+  opts: { mine: string; now?: number; showJoinLeave?: boolean; showAchievements?: boolean },
 ): ChatRow[] {
   const now = opts.now ?? Date.now();
   const showJoinLeave = opts.showJoinLeave !== false;
+  const showAchievements = opts.showAchievements !== false;
   const out: ChatRow[] = [];
   let currentDay = '';
   let group: GroupRow | null = null;
 
   for (const m of msgs) {
-    const isSystem = m.kind === 2 || m.kind === 3;
-    // 关掉进出提示时直接跳过：既不留空日期头，也不打断同一人的 5 分钟合并
-    if (isSystem && !showJoinLeave) continue;
+    const isJoinLeave = m.kind === 2 || m.kind === 3;
+    const isAchievement = m.kind === 6;
+    const isSystem = isJoinLeave || isAchievement;
+    // 关掉提示时直接跳过：既不留空日期头，也不打断同一人的 5 分钟合并
+    if (isJoinLeave && !showJoinLeave) continue;
+    if (isAchievement && !showAchievements) continue;
 
     const key = dayKey(m.ts);
     if (key !== currentDay) {
@@ -90,7 +97,8 @@ export function buildRows(
     }
 
     if (isSystem) {
-      out.push({ type: 'system', key: `sys:${m.boot}:${m.seq}`, msg: m, join: m.kind === 2 });
+      const variant: SystemVariant = isAchievement ? 'achievement' : m.kind === 2 ? 'join' : 'leave';
+      out.push({ type: 'system', key: `sys:${m.boot}:${m.seq}`, msg: m, join: m.kind === 2, variant });
       group = null;
       continue;
     }

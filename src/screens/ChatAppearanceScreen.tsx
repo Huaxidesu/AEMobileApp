@@ -1,4 +1,4 @@
-// 聊天外观：字号 / 头像大小 / 气泡宽度 / 消息间距 / 时间位置 / 进出提示。
+// 聊天外观：字号 / 头像大小 / 气泡宽度 / 消息间距 / 时间位置 / 进出提示 / 成就提示。
 // 改完立刻生效，预览用聊天页同一套 MessageGroup 组件渲染。
 import React from 'react';
 import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
@@ -66,8 +66,17 @@ function Stepper({
 
 export default function ChatAppearanceScreen() {
   const { colors } = useTheme();
-  const { prefs, setFontSize, setAvatarSize, setBubbleMaxWidth, setDensity, setTimeMode, setShowJoinLeave, reset } =
-    useChatPrefs();
+  const {
+    prefs,
+    setFontSize,
+    setAvatarSize,
+    setBubbleMaxWidth,
+    setDensity,
+    setTimeMode,
+    setShowJoinLeave,
+    setShowAchievements,
+    reset,
+  } = useChatPrefs();
   const win = useWindowDimensions();
 
   const now = Date.now();
@@ -85,7 +94,10 @@ export default function ChatAppearanceScreen() {
     name: 'Steve',
     kind: 0,
     mine: false,
-    msgs: [msg(1, 0, 'Steve', '晚上开荒，谁来？', -4 * 60000), msg(2, 0, 'Steve', '缺个挖矿的', -3 * 60000)],
+    msgs: [
+      msg(1, 0, 'Steve', '§e晚上开荒§r，谁来？', -4 * 60000),
+      msg(2, 0, 'Steve', '§b@我§r 缺个挖矿的', -3 * 60000),
+    ],
   };
   const appOther: GroupRow = {
     type: 'group',
@@ -120,10 +132,13 @@ export default function ChatAppearanceScreen() {
           <Text style={styles.groupTitle}>预览</Text>
           <View style={styles.previewCard}>
             <DayDivider label="今天" />
-            {prefs.showJoinLeave ? <SystemLine msg={msg(5, 2, 'Alex', '', -5 * 60000)} join /> : null}
-            <MessageGroup row={other} prefs={prefs} maxBubbleWidth={maxBubbleWidth} />
-            <MessageGroup row={appOther} prefs={prefs} maxBubbleWidth={maxBubbleWidth} />
-            <MessageGroup row={mineRow} prefs={prefs} maxBubbleWidth={maxBubbleWidth} />
+            {prefs.showJoinLeave ? <SystemLine msg={msg(5, 2, 'Alex', '', -5 * 60000)} variant="join" /> : null}
+            {prefs.showAchievements ? (
+              <SystemLine msg={msg(6, 6, 'Steve', '获得木头', -4.5 * 60000)} variant="achievement" />
+            ) : null}
+            <MessageGroup row={other} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me="我" />
+            <MessageGroup row={appOther} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me="我" />
+            <MessageGroup row={mineRow} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me="我" />
           </View>
           <Text style={styles.footnote}>
             预览与聊天页使用同一套组件。头像只在游戏内玩家的第一条消息旁显示，连续发言会并成一组。
@@ -227,6 +242,19 @@ export default function ChatAppearanceScreen() {
                 onValueChange={setShowJoinLeave}
                 trackColor={{ false: colors.surfaceHigh, true: colors.accent }}
                 thumbColor={prefs.showJoinLeave ? colors.bg : colors.textDim}
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stepLabel}>成就提示</Text>
+                <Text style={styles.stepHint}>玩家完成成就时，像进出一样显示居中系统行</Text>
+              </View>
+              <Switch
+                value={prefs.showAchievements}
+                onValueChange={setShowAchievements}
+                trackColor={{ false: colors.surfaceHigh, true: colors.accent }}
+                thumbColor={prefs.showAchievements ? colors.bg : colors.textDim}
               />
             </View>
           </View>
