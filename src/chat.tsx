@@ -107,7 +107,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       since: cursor.current.since,
       boot: cursor.current.boot,
       // 新 App 才收玩家进出事件；老服务端会忽略这个参数
-      events: 1,
+      events: true,
     });
 
     stream.addEventListener('open', () => {
