@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -22,6 +22,17 @@ import { perfLog } from './src/perf';
 
 /** 模块加载时刻（≈ JS 主线程启动），用来量启动各段的耗时 */
 const BOOT_T0 = Date.now();
+
+/**
+ * 启动页最短停留时间。
+ * 正常启动 320ms 就 ready 了，但入场动画要 620ms —— 不兜住的话动画会被切一半，
+ * 看起来像「闪了一下」。比这个值快也没关系，多等这 600ms 换一段完整的过场。
+ */
+const BOOT_MIN_MS = 900;
+/** 图标从屏幕正中上移的距离（dp），给下面的转圈和文字腾位置 */
+const BOOT_ICON_RISE = 108;
+/** 入场动画整个 App 生命周期只跑一次：换图标库时 Overlay 会重挂，别重播 */
+let bootIntroPlayed = false;
 
 /** 根组件只负责挂 Provider：主题与布局偏好要在任何界面（含启动页）之前就绪 */
 export default function App() {
@@ -59,6 +70,13 @@ function AppBody() {
   const [fontsReady, fontError] = useFonts(Ionicons.font);
   /** 辅助库（流体/源质）由 resolveActiveDb 里的内置包落地负责，这里只等它就绪 */
   const [auxReady, setAuxReady] = useState(false);
+  /** 启动页最短停留：到点之前就算 ready 了也继续盖着，让入场动画跑完 */
+  const [minSplashDone, setMinSplashDone] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMinSplashDone(true), BOOT_MIN_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   const refresh = useCallback(() => {
     const t0 = Date.now();
@@ -91,8 +109,21 @@ function AppBody() {
   /**
    * 启动页要盖住两段空窗：字体没就绪，以及「已确定库名、但主界面还没挂好」。
    * 后者包括 SQLite 打开 186MB 物品库的那几秒 —— 之前这段是纯黑屏，看着像崩了。
+   * 再加一条：就算上面都就绪了，也至少盖到入场动画放完（见 BOOT_MIN_MS）。
    */
-  const showBoot = !(fontsReady || fontError) || (dbName !== null && !booted && !dbError);
+  const fontsPending = !(fontsReady || fontError);
+  const showBoot = fontsPending
+    || (dbName !== null && !booted && !dbError)
+    || (!!dbName && !dbError && !minSplashDone);
+
+  /** 转圈下面那行字：按真实卡在哪一段来报，不是假进度 */
+  const bootStatus = fontsPending
+    ? '正在加载字体…'
+    : dbName === undefined
+      ? '正在检查图标库…'
+      : !booted
+        ? '正在打开物品库…'
+        : '正在进入…';
 
   return (
     <View style={styles.container}>
@@ -122,7 +153,7 @@ function AppBody() {
             </SQLiteProvider>
           ) : null}
       </Boundary>
-      {showBoot ? <BootOverlay /> : null}
+      <BootOverlay visible={showBoot} status={bootStatus} />
     </View>
   );
 }
@@ -160,15 +191,79 @@ function AppShell({ dbName, onReady }: { dbName: string; onReady: () => void }) 
   );
 }
 
-/** 启动页：深色底 + 字标 + 转圈，与原生 splash 同色，衔接起来像一次连续启动 */
-function BootOverlay() {
+/**
+ * 启动页：接住系统 splash 里那颗图标，让它往上走一段，下面浮出转圈和文字。
+ *
+ * 衔接逻辑：Android 12+ 的系统 splash 会把启动图标在正中放大后淡出，
+ * 这里第一帧就把同一颗图标画在正中（同底色），视觉上等于「图标没换过，只是继续动」；
+ * 上移 108dp 之后下面才是字标 + 转圈，比原来「图标闪一下 → 突然变成纯文字页」连贯。
+ */
+function BootOverlay({ visible, status }: { visible: boolean; status: string }) {
   const { colors } = useTheme();
+  const [mounted, setMounted] = useState(true);
+  /** 0 = 图标居中；1 = 图标已上移到位 */
+  const intro = useRef(new Animated.Value(bootIntroPlayed ? 1 : 0)).current;
+  /** 图标自身的「放大」：系统 splash 那一下之后由这里接手，避免中间断掉 */
+  const pop = useRef(new Animated.Value(bootIntroPlayed ? 1 : 0)).current;
+  /** 文字单独一条曲线：等图标让开位置再淡入，否则中途会压在图标上 */
+  const textIn = useRef(new Animated.Value(bootIntroPlayed ? 1 : 0)).current;
+  const fade = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (bootIntroPlayed) return;
+    bootIntroPlayed = true;
+    Animated.parallel([
+      Animated.timing(pop, {
+        toValue: 1,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(intro, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(textIn, {
+        toValue: 1,
+        duration: 340,
+        delay: 260,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [intro, pop, textIn]);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      fade.setValue(1);
+      return;
+    }
+    Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(({ finished }) => {
+      if (finished) setMounted(false);
+    });
+  }, [visible, fade]);
+
+  if (!mounted) return null;
+
+  const iconY = intro.interpolate({ inputRange: [0, 1], outputRange: [0, -BOOT_ICON_RISE] });
+  const iconScale = pop.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] });
+  const textY = textIn.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+
   return (
-    <View style={styles.boot} pointerEvents="none">
-      <Text style={styles.bootTitle}>AEMobile</Text>
-      <Text style={styles.bootSub}>GTNH AE 网络监控</Text>
-      <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.s }} />
-    </View>
+    <Animated.View style={[styles.boot, { opacity: fade }]} pointerEvents="none">
+      <Animated.View style={{ transform: [{ translateY: iconY }, { scale: iconScale }] }}>
+        <Image source={require('./assets/boot-icon.png')} style={styles.bootIcon} resizeMode="contain" />
+      </Animated.View>
+      <Animated.View style={[styles.bootText, { opacity: textIn, transform: [{ translateY: textY }] }]}>
+        <Text style={styles.bootTitle}>AEMobile</Text>
+        <Text style={styles.bootSub}>GTNH AE 网络监控</Text>
+        <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.m }} />
+        <Text style={styles.bootStatus}>{status}</Text>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -227,10 +322,21 @@ const styles = themedStyles((colors) => ({
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+  },
+  bootIcon: { width: 128, height: 128 },
+  // 图标上移到位后底边在 centerY-44，文字从 centerY+10 开始排，留 54dp 空档
+  bootText: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    marginTop: 10,
+    alignItems: 'center',
+    gap: 4,
   },
   bootTitle: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: 2 },
   bootSub: { color: colors.textFaint, fontSize: 11, letterSpacing: 1 },
+  bootStatus: { color: colors.textFaint, fontSize: 11, marginTop: 2, letterSpacing: 0.5 },
   fail: {
     flex: 1,
     backgroundColor: colors.bg,
