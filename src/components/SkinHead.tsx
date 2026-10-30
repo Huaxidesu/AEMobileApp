@@ -59,9 +59,14 @@ export function SkinHead({
 
   const radius = Math.max(5, Math.round(size * 0.2));
   const crop = skin ? skinCrop(size, skin.width(), skin.height()) : null;
+  const isServer = kind === 4;
+  const isMusic = kind === 5;
 
-  const face =
-    skin && crop ? (
+  const face = isServer ? (
+    <IconAvatar size={size} icon="server" tone="accent" />
+  ) : isMusic ? (
+    <IconAvatar size={size} icon="disc" tone="accent2" />
+  ) : skin && crop ? (
       <View
         style={{
           width: size,
@@ -107,6 +112,34 @@ export function SkinHead({
     <View style={{ width: size, height: size }}>
       {face}
       <PhoneBadge size={size} />
+    </View>
+  );
+}
+
+function IconAvatar({
+  size,
+  icon,
+  tone,
+}: {
+  size: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone: 'accent' | 'accent2';
+}) {
+  const { colors } = useTheme();
+  const bg = tone === 'accent' ? colors.accentSoft : colors.accent2Soft;
+  const fg = tone === 'accent' ? colors.accent : colors.accent2;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.max(5, Math.round(size * 0.2)),
+        backgroundColor: bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Ionicons name={icon} size={Math.round(size * 0.56)} color={fg} />
     </View>
   );
 }

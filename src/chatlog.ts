@@ -18,7 +18,7 @@ export interface StoredMsg {
   boot: number;
   seq: number;
   ts: number;
-  /** 0 = 游戏内玩家，1 = 手机 App */
+  /** 0 = 游戏内玩家，1 = 手机 App，2 = 加入，3 = 退出，4 = 服务器广播，5 = AllMusic */
   kind: number;
   name: string;
   text: string;

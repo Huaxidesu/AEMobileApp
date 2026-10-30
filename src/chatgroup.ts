@@ -95,7 +95,7 @@ export function buildRows(
       continue;
     }
 
-    const ident = `${m.kind === 1 ? 'a' : 'g'}:${m.name}`;
+    const ident = `${m.kind}:${m.name}`;
     if (group && group.ident === ident && m.ts - group.lastTs <= MERGE_MS) {
       group.msgs.push(m);
       group.lastTs = m.ts;

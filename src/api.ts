@@ -220,7 +220,7 @@ export interface TpsFull {
 
 // ---- 聊天（op = "chat" 订阅 / "chatSend" 请求） ----
 
-/** 推送帧：`m` 的每一行是 `[seq, kind, name, text, ts]` */
+/** 推送帧：`m` 的每一行是 `[seq, kind, name, text, ts]`（kind 0=玩家 1=App 2=加入 3=退出 4=服务器 5=AllMusic） */
 export interface ChatFrame {
   t: 'c';
   /** 服务端这次启动的标识；变了说明服务端重启过（seq 归零） */

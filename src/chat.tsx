@@ -153,9 +153,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       appendAll(incoming);
       setMsgs((prev) => merge(prev, incoming));
       if (!activeRef.current) {
-        // 玩家进出提示（kind 2/3）不占未读；自己的 App 消息也不占
+        // 玩家聊天 / 服务器公告 / AllMusic 都算未读；进出提示（2/3）和自己的 App 消息不算
         const fresh = incoming.filter(
-          (m) => m.kind === 0 || (m.kind === 1 && m.name !== myNameRef.current),
+          (m) =>
+            m.kind === 0 ||
+            m.kind === 4 ||
+            m.kind === 5 ||
+            (m.kind === 1 && m.name !== myNameRef.current),
         ).length;
         if (fresh > 0) setUnread((u) => u + fresh);
       }
