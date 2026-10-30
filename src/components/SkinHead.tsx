@@ -25,23 +25,23 @@ export function SkinHead({
 }) {
   const game = kind === 0 || kind === 2 || kind === 3;
   const av = useAvatar(name, game);
-  const [skinWidth, setSkinWidth] = useState(64);
+  const [skinDims, setSkinDims] = useState({ w: 64, h: 64 });
   const [failed, setFailed] = useState(false);
 
   const uri = failed ? null : av.uri;
 
-  // 皮肤可能是 64×64 / 64×32 / 128×128；宽度按真实尺寸算，高度交给 Image 保持比例
+  // 皮肤可能是 64×64 / 64×32 / 128×128；宽高按真实尺寸算
   useEffect(() => {
     setFailed(false);
     if (!av.uri) {
-      setSkinWidth(64);
+      setSkinDims({ w: 64, h: 64 });
       return;
     }
     let alive = true;
     Image.getSize(
       av.uri,
-      (w) => {
-        if (alive && w > 0) setSkinWidth(w);
+      (w, h) => {
+        if (alive && w > 0 && h > 0) setSkinDims({ w, h });
       },
       () => {
         // 有些 Android 版本对 file:// 取尺寸会失败：按 64×64 处理，
@@ -53,7 +53,7 @@ export function SkinHead({
     };
   }, [av.uri, name]);
 
-  const crop = skinCrop(size, skinWidth);
+  const crop = skinCrop(size, skinDims.w, skinDims.h);
   if (size <= 0) return null;
   const radius = Math.max(5, Math.round(size * 0.2));
 
@@ -78,6 +78,7 @@ export function SkinHead({
         style={{
           position: 'absolute',
           width: crop.imageWidth,
+          height: crop.imageHeight,
           left: crop.left,
           top: crop.top,
         }}
@@ -93,6 +94,7 @@ export function SkinHead({
         style={{
           position: 'absolute',
           width: crop.imageWidth,
+          height: crop.imageHeight,
           left: crop.hatLeft,
           top: crop.top,
         }}
