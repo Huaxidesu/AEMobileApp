@@ -18,7 +18,7 @@ module.exports = {
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff",
+        "backgroundColor": "#0F162E",
       },
       "package": "dev.youtiao.aemonitor",
       "versionCode": 35
