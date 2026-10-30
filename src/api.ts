@@ -246,6 +246,31 @@ export async function sendChat(
 }
 
 /**
+ * 音乐：转发给代理上的 AEMobileMusicBridge，由它执行 /music 并私有返回结果。
+ * 返回的 lines 已经去掉 AllMusic 前缀和 § 颜色码。
+ */
+export interface MusicResult {
+  ok: boolean;
+  lines: string[];
+  online: boolean;
+  message: string;
+}
+
+export async function sendMusic(
+  cfg: ServerConfig,
+  cmd: string,
+  args: string[] = [],
+): Promise<MusicResult> {
+  const res = await tcp.request<{ lines?: string[]; online?: boolean }>(cfg, 'music', { cmd, args });
+  return {
+    ok: res.ok,
+    lines: Array.isArray(res.b?.lines) ? res.b!.lines : [],
+    online: !!res.b?.online,
+    message: res.m ?? '',
+  };
+}
+
+/**
  * 推送帧信封（和 2.1.0 的 SSE 帧一模一样，只是外面多包了一层 TCP 帧）。
  *
  * - `f` 全量：`d` 是数组形式的条目，`n` 是稀疏 NBT（下标 → base64）

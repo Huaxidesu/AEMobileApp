@@ -15,6 +15,7 @@ import CraftScreen from './screens/CraftScreen';
 import ChatScreen from './screens/ChatScreen';
 import ChatNameScreen from './screens/ChatNameScreen';
 import ChatAppearanceScreen from './screens/ChatAppearanceScreen';
+import MusicScreen from './screens/MusicScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import ServerSettingsScreen from './screens/ServerSettingsScreen';
 import ServerListScreen from './screens/ServerListScreen';
@@ -144,6 +145,7 @@ export default function RootNavigator() {
           component={ChatAppearanceScreen}
           options={subHeader('聊天外观', colors)}
         />
+        <Stack.Screen name="Music" component={MusicScreen} options={subHeader('音乐', colors)} />
         <Stack.Screen name="ServerList" component={ServerListScreen} options={subHeader('服务器列表', colors)} />
         <Stack.Screen name="IconPack" component={IconPackScreen} options={subHeader('图标库', colors)} />
         <Stack.Screen name="CacheDetail" component={CacheScreen} options={subHeader('存储与缓存', colors)} />

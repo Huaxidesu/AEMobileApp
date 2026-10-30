@@ -106,6 +106,9 @@ export default function ChatScreen({ navigation }: any) {
             {name}
           </Text>
         </Pressable>
+        <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Music')} hitSlop={8}>
+          <Ionicons name="musical-notes-outline" size={18} color={colors.accent} />
+        </Pressable>
         <Pressable style={styles.iconBtn} onPress={onClear} hitSlop={8}>
           <Ionicons name="trash-outline" size={17} color={colors.textDim} />
         </Pressable>
