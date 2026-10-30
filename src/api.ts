@@ -246,7 +246,7 @@ export async function sendChat(
 }
 
 /**
- * 音乐：转发给代理上的 AEMobileMusicBridge，由它执行 /music 并私有返回结果。
+ * 音乐：转发给代理上的 AEMobileBridge，由它执行 /music 并私有返回结果。
  * 返回的 lines 已经去掉 AllMusic 前缀和 § 颜色码。
  */
 export interface MusicResult {

@@ -1,6 +1,6 @@
 // 音乐：AllMusic 点歌 / 搜歌 / 队列 / 投票。
 //
-// 命令不直接在这里拼成公屏聊天：走 api.sendMusic → 后端 mod → 代理上的 AEMobileMusicBridge，
+// 命令不直接在这里拼成公屏聊天：走 api.sendMusic → 后端 mod → 代理上的 AEMobileBridge，
 // 由桥接插件以“这个 App 绑定码对应的玩家”身份执行 /music，结果只回这台手机。
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
