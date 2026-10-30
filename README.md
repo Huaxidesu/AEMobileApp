@@ -44,7 +44,7 @@
 设置 → 图标库 → 检查更新，只下载变化的那一个。
 
 - 想自己搭更新源 / 导出图标 / 做内置图标的安装包：见 [AEMobileIcoOutput](https://github.com/Huaxidesu/AEMobileIcoOutput)
-- 游戏里导出图标的指令：`/aemobile dump all`（客户端指令，进世界后敲；也可以只导其中一类，见该仓库文档）
+- 游戏里导出图标的指令：`/aemobileicons dump all`（客户端指令，进世界后敲；也可以只导其中一类，见该仓库文档）
 
 ---
 
