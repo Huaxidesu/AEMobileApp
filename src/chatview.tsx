@@ -34,6 +34,18 @@ export function DayDivider({ label }: { label: string }) {
 /** 居中系统行：玩家进出、玩家完成成就 */
 export function SystemLine({ msg, variant }: { msg: ChatLike; variant: SystemVariant }) {
   const { colors } = useTheme();
+  // 点歌结果没有「谁做了什么」的结构，`text` 就是整句
+  if (variant === 'music') {
+    return (
+      <View style={styles.systemRow}>
+        <Ionicons name="musical-notes" size={13} color={colors.accent} />
+        <Text style={[styles.systemText, { color: colors.textDim }]} numberOfLines={3}>
+          {msg.text}
+        </Text>
+      </View>
+    );
+  }
+
   const conf =
     variant === 'achievement'
       ? { icon: 'trophy' as const, color: colors.warn, tail: '完成了成就' }

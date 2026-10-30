@@ -8,14 +8,14 @@ export interface ChatLike {
   boot: number;
   seq: number;
   ts: number;
-  /** 0 = 游戏内玩家，1 = 手机 App，2 = 加入，3 = 退出，4 = 服务器，5 = AllMusic，6 = 成就 */
+  /** 0 = 游戏内玩家，1 = 手机 App，2 = 加入，3 = 退出，4 = 服务器，5 = AllMusic，6 = 成就，7 = 点歌结果（本地） */
   kind: number;
   name: string;
   text: string;
 }
 
-/** 居中系统行的三种来源 */
-export type SystemVariant = 'join' | 'leave' | 'achievement';
+/** 居中系统行的来源 */
+export type SystemVariant = 'join' | 'leave' | 'achievement' | 'music';
 
 export type ChatRow =
   | { type: 'day'; key: string; ts: number; label: string }
@@ -84,7 +84,9 @@ export function buildRows(
   for (const m of msgs) {
     const isJoinLeave = m.kind === 2 || m.kind === 3;
     const isAchievement = m.kind === 6;
-    const isSystem = isJoinLeave || isAchievement;
+    // 点歌结果只在这台手机上（本地插入），和进出/成就一样走居中行
+    const isMusicNote = m.kind === 7;
+    const isSystem = isJoinLeave || isAchievement || isMusicNote;
     // 关掉提示时直接跳过：既不留空日期头，也不打断同一人的 5 分钟合并
     if (isJoinLeave && !showJoinLeave) continue;
     if (isAchievement && !showAchievements) continue;
@@ -97,7 +99,13 @@ export function buildRows(
     }
 
     if (isSystem) {
-      const variant: SystemVariant = isAchievement ? 'achievement' : m.kind === 2 ? 'join' : 'leave';
+      const variant: SystemVariant = isAchievement
+        ? 'achievement'
+        : isMusicNote
+          ? 'music'
+          : m.kind === 2
+            ? 'join'
+            : 'leave';
       out.push({ type: 'system', key: `sys:${m.boot}:${m.seq}`, msg: m, join: m.kind === 2, variant });
       group = null;
       continue;

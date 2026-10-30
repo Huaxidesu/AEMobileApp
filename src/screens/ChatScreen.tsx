@@ -44,6 +44,8 @@ import {
 } from '../commands';
 import type { ChatModule, MusicCmd } from '../commands';
 import { plainMc } from '../mccolor';
+import { friendly } from '../musicout';
+import type { MusicAction } from '../musicout';
 import { showToast } from '../toast';
 import { themedStyles, useTheme, spacing, radius } from '../theme';
 
@@ -53,13 +55,16 @@ const PLAYERS_TTL = 15000;
 
 type SheetKind = 'module' | 'mention' | 'command' | null;
 
+/** 这些命令要「看结果再选」，执行完切到结果子视图；其余一次性动作直接把结果写进聊天页 */
+const MULTI_STEP = new Set(['search', 'list', 'help']);
+
 export default function ChatScreen({ navigation }: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
   const { prefs } = useChatPrefs();
   const { config } = useConfig();
-  const { msgs, status, error, gap, name, send, setActive, clear } = useChat();
+  const { msgs, status, error, gap, name, send, setActive, clear, appendLocal } = useChat();
 
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -67,7 +72,14 @@ export default function ChatScreen({ navigation }: any) {
   const [candidates, setCandidates] = useState<string[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [cmdResult, setCmdResult] = useState<string[]>([]);
+  const [cmdError, setCmdError] = useState('');
   const [cmdBusy, setCmdBusy] = useState(false);
+  /** 最近执行的命令名（`search` / `list`），显示在结果标题上 */
+  const [cmdLabel, setCmdLabel] = useState('');
+  /** 「填参数」模式：输入框只收参数，命令前缀显示在输入框上方 */
+  const [pendingCmd, setPendingCmd] = useState<MusicCmd | null>(null);
+  /** 命令面板的两个视图：命令列表 / 结果子视图（搜歌、队列用） */
+  const [cmdMode, setCmdMode] = useState<'commands' | 'result'>('commands');
 
   const listRef = useRef<FlatList<ChatRow>>(null);
   const inputRef = useRef<TextInput>(null);
@@ -99,21 +111,38 @@ export default function ChatScreen({ navigation }: any) {
   // ---------------------------------------------------------------- 音乐桥
 
   const runMusic = useCallback(
-    async (cmd: string, args: string[]) => {
+    async (cmd: string, args: string[], label?: string) => {
       setCmdBusy(true);
+      setCmdLabel(label ?? cmd);
+      setCmdError('');
       try {
         const r = await sendMusic(config as ServerConfig, cmd, args);
-        setCmdResult(r.lines.slice(0, 6).map(plainMc));
-        if (!r.ok) showToast(r.message || r.lines[0] || '执行失败', 'bad');
+        const lines = r.lines.map(plainMc).filter(Boolean);
+        const err = r.ok ? '' : friendly(r.message, r.lines);
+        setCmdResult(lines);
+        setCmdError(err);
+
+        if (MULTI_STEP.has(cmd)) {
+          // 搜歌/队列这种要看结果再选的：展开面板的「结果」子视图
+          setCmdMode('result');
+          setSheet('command');
+        } else {
+          // 一次性动作：结果直接进聊天页，面板收起
+          setSheet(null);
+          appendLocal(err ? `点歌失败 · ${err}` : `点歌 · ${lines[lines.length - 1] || `/${cmd} 已执行`}`);
+        }
         return r;
       } catch (e: any) {
-        showToast(String(e?.message ?? '音乐请求失败'), 'bad');
+        const msg = String(e?.message ?? '音乐请求失败');
+        setCmdError(msg);
+        setSheet(null);
+        appendLocal(`点歌失败 · ${msg}`);
         return null;
       } finally {
         setCmdBusy(false);
       }
     },
-    [config],
+    [config, appendLocal],
   );
 
   // ---------------------------------------------------------------- 面板
@@ -132,6 +161,8 @@ export default function ChatScreen({ navigation }: any) {
   const onChangeText = useCallback(
     (v: string) => {
       setDraft(v);
+      // 「填参数」模式下输入的就是参数，不要弹任何面板
+      if (pendingCmd) return;
       const t = v.trimStart();
       // 还在写模块名：`/`、`/music` 都算
       if (t.startsWith('/')) {
@@ -152,11 +183,12 @@ export default function ChatScreen({ navigation }: any) {
       }
       setSheet((s) => (s ? null : s));
     },
-    [loadPlayers],
+    [loadPlayers, pendingCmd],
   );
 
   const pickModule = useCallback((m: ChatModule) => {
     setDraft(m.prefix);
+    setCmdMode('commands');
     setSheet('command');
     inputRef.current?.focus();
   }, []);
@@ -181,15 +213,50 @@ export default function ChatScreen({ navigation }: any) {
   const pickCommand = useCallback(
     async (c: MusicCmd) => {
       if (c.argHint) {
-        // 要填参数的：把命令塞进输入框，光标停在末尾
-        setDraft(commandText(c));
+        // 要填参数的：输入框只收参数，命令前缀单独显示（灰色占位就是 argHint）
+        setPendingCmd(c);
+        setDraft('');
         setSheet(null);
         inputRef.current?.focus();
         return;
       }
       const { cmd, args } = commandArgs(c);
       setDraft('');
-      await runMusic(cmd, args);
+      await runMusic(cmd, args, c.label);
+    },
+    [runMusic],
+  );
+
+  /**
+   * 点结果里的条目。
+   *
+   * - 搜索结果（`1->歌名 | 歌手`）→ 直接 `select 1`；
+   * - help/队列里的 `[点我…]` 行 → 执行那条命令；带 `[ID]` 占位符的先进参数模式。
+   */
+  const onAction = useCallback(
+    async (a: MusicAction) => {
+      if (a.kind === 'select' && a.index != null) {
+        await runMusic('select', [String(a.index)], 'select');
+        return;
+      }
+      if (a.needsArg) {
+        // 占位符（`[音乐ID]`/`(序号)`）不进 fixed，用户填的值直接顶到它的位置上
+        const placeholder = (a.args ?? []).find((x) => /^[\[(（]/.test(x));
+        const fixed = (a.args ?? []).filter((x) => !/^[\[(（]/.test(x));
+        setPendingCmd({
+          label: a.label.replace(/^\/music\s*/, ''),
+          cmd: a.cmd ?? '',
+          fixed,
+          argHint: placeholder ?? '[参数]',
+          desc: a.sub,
+          group: 'more',
+        });
+        setDraft('');
+        setSheet(null);
+        inputRef.current?.focus();
+        return;
+      }
+      if (a.cmd) await runMusic(a.cmd, a.args ?? [], a.label.replace(/^\/music\s*/, ''));
     },
     [runMusic],
   );
@@ -197,6 +264,20 @@ export default function ChatScreen({ navigation }: any) {
   // ---------------------------------------------------------------- 发送
 
   const onSend = useCallback(async () => {
+    // 「填参数」模式：把输入框里的内容当参数补到命令后面
+    if (pendingCmd) {
+      const arg = draft.trim();
+      if (!arg || busy || cmdBusy) return;
+      const fixed = pendingCmd.fixed ?? [];
+      const label = pendingCmd.label;
+      setDraft('');
+      setPendingCmd(null);
+      // `/music [音乐ID]` 这种没有子命令的：用户填的就是子命令位
+      if (pendingCmd.cmd) await runMusic(pendingCmd.cmd, [...fixed, arg], label);
+      else await runMusic(arg, fixed, label);
+      return;
+    }
+
     const out = parseOutgoing(draft);
     if (!out || busy || cmdBusy) return;
     if (out.kind === 'unknown') {
@@ -222,7 +303,7 @@ export default function ChatScreen({ navigation }: any) {
     } finally {
       setBusy(false);
     }
-  }, [draft, busy, cmdBusy, send, runMusic]);
+  }, [draft, busy, cmdBusy, send, runMusic, pendingCmd]);
 
   const onClear = useCallback(() => {
     Alert.alert('清空聊天记录', '只清这台手机上的本地记录，游戏里和其他设备不受影响。', [
@@ -308,11 +389,40 @@ export default function ChatScreen({ navigation }: any) {
         />
       ) : null}
       {sheet === 'command' ? (
-        <CommandSheet result={cmdResult} busy={cmdBusy} onPick={pickCommand} onClose={() => setSheet(null)} />
+        <CommandSheet
+          result={cmdResult}
+          error={cmdError}
+          busy={cmdBusy}
+          lastLabel={cmdLabel}
+          mode={cmdMode}
+          onPick={pickCommand}
+          onAction={onAction}
+          onBack={() => setCmdMode('commands')}
+          onClose={() => setSheet(null)}
+        />
       ) : null}
 
       {gap ? (
         <Text style={styles.gap}>中间有消息已过期（服务端只保留最近 30 秒，且不存储历史）</Text>
+      ) : null}
+
+      {pendingCmd ? (
+        <View style={styles.cmdPrefixBar}>
+          <Ionicons name="terminal-outline" size={12} color={colors.textFaint} />
+          <Text style={styles.cmdPrefixText} numberOfLines={1}>
+            <Text style={{ color: colors.accent }}>@allmusic /music {pendingCmd.label}</Text>
+            <Text style={{ color: colors.textFaint }}> {pendingCmd.argHint}</Text>
+          </Text>
+          <Pressable
+            onPress={() => {
+              setPendingCmd(null);
+              setDraft('');
+            }}
+            hitSlop={10}
+          >
+            <Ionicons name="close-circle" size={15} color={colors.textFaint} />
+          </Pressable>
+        </View>
       ) : null}
 
       <View style={styles.inputBar}>
@@ -325,6 +435,9 @@ export default function ChatScreen({ navigation }: any) {
               setSheet(null);
               return;
             }
+            setPendingCmd(null);
+            setDraft('');
+            setCmdMode('commands');
             setSheet('module');
             inputRef.current?.focus();
           }}
@@ -336,7 +449,13 @@ export default function ChatScreen({ navigation }: any) {
           style={styles.input}
           value={draft}
           onChangeText={onChangeText}
-          placeholder={online ? '说点什么…（/ 模块，@ 提及）' : '连接断开，恢复后可发送'}
+          placeholder={
+            pendingCmd
+              ? `填 ${pendingCmd.argHint ?? '参数'}，直接打字覆盖`
+              : online
+                ? '说点什么…（/ 模块，@ 提及）'
+                : '连接断开，恢复后可发送'
+          }
           placeholderTextColor={colors.textFaint}
           maxLength={MAX_TEXT}
           multiline
@@ -427,6 +546,17 @@ const styles = themedStyles((colors) => ({
   emptyText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
   emptyHint: { color: colors.textFaint, fontSize: 11 },
   gap: { color: colors.warn, fontSize: 11, textAlign: 'center', paddingBottom: 6 },
+  cmdPrefixBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.l,
+    paddingVertical: 6,
+    backgroundColor: colors.surfaceAlt,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  cmdPrefixText: { flex: 1, fontSize: 11 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',

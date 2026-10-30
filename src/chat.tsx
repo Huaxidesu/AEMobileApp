@@ -37,6 +37,8 @@ interface ChatCtx {
   /** 聊天页聚焦/失焦，用来算未读 */
   setActive: (v: boolean) => void;
   send: (text: string) => Promise<void>;
+  /** 本地插一条系统行（点歌结果这类「只在这台手机上」的消息），不占未读 */
+  appendLocal: (text: string) => void;
   clear: () => void;
 }
 
@@ -200,6 +202,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [config, name],
   );
 
+  /** 本地消息的 seq：用 boot=-1 和真实消息区分，主键不会撞 */
+  const localSeq = useRef(0);
+  const appendLocal = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      localSeq.current += 1;
+      const item: ChatMessage = {
+        scope,
+        boot: -1,
+        seq: localSeq.current,
+        ts: Date.now(),
+        kind: 7,
+        name: '点歌',
+        text: t,
+      };
+      appendAll([item]);
+      setMsgs((prev) => merge(prev, [item]));
+    },
+    [scope],
+  );
+
   const clear = useCallback(() => {
     clearScope(scope);
     setMsgs([]);
@@ -209,8 +233,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [scope]);
 
   const value = useMemo<ChatCtx>(
-    () => ({ msgs, unread, status, error, gap, name, setName, setActive, send, clear }),
-    [msgs, unread, status, error, gap, name, setName, setActive, send, clear],
+    () => ({ msgs, unread, status, error, gap, name, setName, setActive, send, appendLocal, clear }),
+    [msgs, unread, status, error, gap, name, setName, setActive, send, appendLocal, clear],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

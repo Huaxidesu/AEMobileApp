@@ -17,74 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useConfig } from '../config';
 import { useChat } from '../chat';
 import { sendMusic } from '../api';
+import { friendly, parseEntries } from '../musicout';
+import type { MusicEntry } from '../musicout';
 import type { ServerConfig } from '../api';
 import { showToast } from '../toast';
 import { themedStyles, useTheme, spacing, radius } from '../theme';
-
-interface Entry {
-  index: number;
-  title: string;
-  artist: string;
-  album: string;
-  raw: string;
-}
-
-function stripHints(text: string): string {
-  return text.replace(/\[点我[^\]]*\]/g, '').trim();
-}
-
-/** 解析 AllMusic 的 `1->歌名 | 歌手 | 专辑[点我选择]` 行 */
-function parseEntries(lines: string[]): Entry[] {
-  const out: Entry[] = [];
-  for (const raw of lines) {
-    const text = stripHints(raw);
-    const m = text.match(/^\s*(\d+)\s*(?:->|[-:])\s*(.+)$/);
-    if (!m) continue;
-    const parts = m[2].split('|').map((s) => s.trim());
-    out.push({
-      index: Number(m[1]),
-      title: parts[0] || '',
-      artist: parts[1] || '',
-      album: parts[2] || '',
-      raw: text,
-    });
-  }
-  return out;
-}
-
-function friendly(code: string, lines: string[]): string {
-  if (!code) return lines.length ? lines[lines.length - 1] : '音乐操作失败';
-  if (code.startsWith('RATE_LIMITED')) return code.replace(/^RATE_LIMITED:?/, '') || '操作太频繁，请稍后再试';
-  switch (code) {
-    case 'MUSIC_NO_PLAYER':
-      return '这个绑定码还没有记录玩家名。请先在游戏里上线一次，或重新放置监控器。';
-    case 'MUSIC_DISABLED':
-      return '服务器没有开启音乐功能（config 的 [music] enabled=false）。';
-    case 'MUSIC_UNAVAILABLE':
-      return '连不上代理上的 AEMobileBridge（检查插件是否启用、端口/密钥是否一致）。';
-    case 'BRIDGE_UNAVAILABLE':
-      return '连不上代理上的 AEMobileBridge（检查插件是否启用、host/port 是否可达）。';
-    case 'BRIDGE_DISABLED':
-      return '服务器没有开启通用命令桥（config 的 [bridge] enabled=false）。';
-    case 'BAD_SECRET':
-      return '命令桥密钥不一致：后端 [bridge] secret 和 BC 插件 config.yml 的 secret 要相同。';
-    case 'BAD_PLAYER':
-      return '玩家名不合法，无法以该身份执行命令。';
-    case 'COMMAND_NOT_ALLOWED:music':
-      return '桥接插件没有允许 music 命令（config.yml 的 allow-commands 加上 music）。';
-    case 'UNKNOWN_COMMAND':
-      return '服务器没有这个命令：确认 AllMusic 已安装在 BC 代理上。';
-    case 'MUSIC_NO_RESPONSE':
-    case 'MUSIC_BAD_RESPONSE':
-      return '音乐桥没有返回有效结果，请稍后再试。';
-    case 'NO_MUSIC_SESSION':
-      return '服务器当前没有音乐会话（需要至少一名装了 AllMusic 的玩家在线）。搜歌和队列仍然可用。';
-    case 'TOO_MANY_ARGS':
-      return '参数太多了。';
-    default:
-      return code;
-  }
-}
 
 export default function MusicScreen() {
   const { colors } = useTheme();
@@ -92,8 +29,8 @@ export default function MusicScreen() {
   const { msgs } = useChat();
 
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Entry[]>([]);
-  const [queue, setQueue] = useState<Entry[]>([]);
+  const [results, setResults] = useState<MusicEntry[]>([]);
+  const [queue, setQueue] = useState<MusicEntry[]>([]);
   const [raw, setRaw] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

@@ -3,10 +3,12 @@
 // 刻意**不用 Modal**：Modal 会抢焦点，输入框一失焦键盘就收起，
 // 打完 `/` 面板弹出的同时键盘消失，很难用。这里直接插在消息列表和输入栏之间，
 // 键盘保持打开、面板高度受限（约 0.42 屏高，可滚动），不会把聊天页整个盖住。
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MUSIC_COMMANDS } from '../commands';
+import { parseOutput } from '../musicout';
+import type { MusicAction } from '../musicout';
 import type { ChatModule, MusicCmd } from '../commands';
 import { themedStyles, useTheme, spacing, radius, alpha } from '../theme';
 
@@ -20,11 +22,17 @@ function Panel({
   title,
   hint,
   onClose,
+  onBack,
+  scrollRef,
   children,
 }: {
   title: string;
   hint?: string;
   onClose: () => void;
+  /** 有值时标题左边显示返回箭头（结果子视图用） */
+  onBack?: () => void;
+  /** 面板内容滚到顶 / 底时用（命令面板要自动把结果滚进视野） */
+  scrollRef?: React.RefObject<ScrollView | null>;
   children: React.ReactNode;
 }) {
   const { colors } = useTheme();
@@ -36,6 +44,11 @@ function Panel({
   return (
     <View style={[styles.panel, { maxHeight: cap, borderTopColor: colors.border, backgroundColor: colors.surface }]}>
       <View style={[styles.headerRow, { flexShrink: 0 }]}>
+        {onBack ? (
+          <Pressable onPress={onBack} hitSlop={10} style={styles.closeBtn}>
+            <Ionicons name="chevron-back" size={18} color={colors.accent} />
+          </Pressable>
+        ) : null}
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{title}</Text>
           {hint ? (
@@ -49,6 +62,7 @@ function Panel({
         </Pressable>
       </View>
       <ScrollView
+        ref={scrollRef}
         keyboardShouldPersistTaps="handled"
         style={{ flexGrow: 0, flexShrink: 1, maxHeight: Math.max(80, cap - HEADER_H) }}
       >
@@ -157,23 +171,49 @@ export function MentionSheet({
   );
 }
 
-/** AllMusic 命令面板：常用 / 更多两组，底部显示最近一次执行结果 */
+/** AllMusic 命令面板：顶部是最近一次执行结果（可点），下面是常用 / 更多两组命令 */
 export function CommandSheet({
   result,
+  error,
   busy,
+  lastLabel,
+  mode,
   onPick,
+  onAction,
+  onBack,
   onClose,
 }: {
   /** 最近一次命令的输出（已去掉颜色码） */
   result: string[];
+  /** 人话错误；空字符串表示成功 */
+  error: string;
   busy: boolean;
-  /** 带参数占位的命令交给调用方插进输入框，其余直接执行 */
+  /** 最近执行的命令名（`search` / `list` …），显示在结果标题上 */
+  lastLabel: string;
+  /** `result` = 只显示结果（搜歌/队列的子视图）；`commands` = 命令列表 */
+  mode: 'commands' | 'result';
+  /** 带参数占位的命令交给调用方进参数模式，其余直接执行 */
   onPick: (c: MusicCmd) => void;
+  /** 点结果里的条目：搜索结果 → 点歌；`[点我…]` 行 → 执行那条命令 */
+  onAction: (a: MusicAction) => void;
+  /** 从结果子视图回到命令列表 */
+  onBack: () => void;
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
   const basic = useMemo(() => MUSIC_COMMANDS.filter((c) => c.group === 'basic'), []);
   const more = useMemo(() => MUSIC_COMMANDS.filter((c) => c.group === 'more'), []);
+  const { actions, texts } = useMemo(() => parseOutput(result), [result]);
+  const hasResult = busy || !!error || result.length > 0;
+
+  // 结果摘要：优先用最后一行（AllMusic 的「已点歌：xxx」「投票已发起」都在最后）
+  const summary = texts.length ? texts[texts.length - 1] : actions.length ? `${actions.length} 条结果` : '';
+
+  // 执行完把结果滚进视野（结果在面板顶部，命令列表在下面）
+  useEffect(() => {
+    if (hasResult) scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [hasResult, result, error]);
 
   const renderRow = (c: MusicCmd) => (
     <Pressable
@@ -194,23 +234,102 @@ export function CommandSheet({
 
   return (
     <Panel
-      title="点歌"
-      hint={busy ? '执行中…' : '带参数的会填进输入框，其余点一下直接执行'}
+      title={mode === 'result' ? (lastLabel === 'search' ? '搜索结果' : '队列') : '点歌'}
+      hint={
+        busy
+          ? '执行中…'
+          : mode === 'result'
+            ? '点一条直接点歌，左上的箭头回命令列表'
+            : '带参数的命令会进「填参数」模式，其余点一下直接执行'
+      }
       onClose={onClose}
+      scrollRef={scrollRef}
+      onBack={mode === 'result' ? onBack : undefined}
     >
       <>
-        <Text style={styles.groupLabel}>常用</Text>
-        {basic.map(renderRow)}
-        <Text style={styles.groupLabel}>更多</Text>
-        {more.map(renderRow)}
-        {result.length > 0 ? (
-          <View style={[styles.resultBox, { borderTopColor: colors.border }]}>
-            {result.slice(0, 6).map((line, i) => (
-              <Text key={i} style={styles.resultText} numberOfLines={2}>
-                {line}
+        {hasResult ? (
+          <View style={[styles.resultBox, { borderBottomColor: colors.border }]}>
+            <View style={styles.resultHead}>
+              <Ionicons
+                name={busy ? 'time-outline' : error ? 'alert-circle' : 'checkmark-circle'}
+                size={13}
+                color={busy ? colors.textDim : error ? colors.bad : colors.ok}
+              />
+              <Text
+                style={[styles.resultHeadText, { color: error ? colors.bad : colors.text }]}
+                numberOfLines={2}
+              >
+                {busy
+                  ? '执行中…'
+                  : error
+                    ? error
+                    : `${lastLabel ? `/${lastLabel} · ` : ''}${summary || '已执行'}`}
+              </Text>
+            </View>
+
+            {actions.map((a, i) =>
+              a.kind === 'select' ? (
+                <Pressable
+                  key={`a${i}`}
+                  style={({ pressed }) => [styles.entryRow, pressed && { backgroundColor: colors.surfaceAlt }]}
+                  onPress={() => onAction(a)}
+                >
+                  <Text style={[styles.entryIndex, { color: colors.accent }]}>{a.index}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.entryTitle} numberOfLines={1}>
+                      {a.label || a.raw}
+                    </Text>
+                    {a.sub ? (
+                      <Text style={styles.entrySub} numberOfLines={1}>
+                        {a.sub}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="play-circle-outline" size={16} color={colors.accent} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  key={`a${i}`}
+                  style={({ pressed }) => [styles.entryRow, pressed && { backgroundColor: colors.surfaceAlt }]}
+                  onPress={() => onAction(a)}
+                >
+                  <Ionicons
+                    name={a.needsArg ? 'create-outline' : 'play-outline'}
+                    size={13}
+                    color={colors.textFaint}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.entryTitle, { color: colors.accent }]} numberOfLines={1}>
+                      {a.label}
+                    </Text>
+                    {a.sub ? (
+                      <Text style={styles.entrySub} numberOfLines={1}>
+                        {a.sub}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {a.needsArg ? (
+                    <Text style={[styles.entrySub, { color: colors.warn }]}>需填参数</Text>
+                  ) : null}
+                </Pressable>
+              ),
+            )}
+
+            {texts.slice(0, 10).map((l, i) => (
+              <Text key={`t${i}`} style={styles.resultText} numberOfLines={2}>
+                {l}
               </Text>
             ))}
           </View>
+        ) : null}
+
+        {mode === 'commands' ? (
+          <>
+            <Text style={styles.groupLabel}>常用</Text>
+            {basic.map(renderRow)}
+            <Text style={styles.groupLabel}>更多</Text>
+            {more.map(renderRow)}
+          </>
         ) : null}
       </>
     </Panel>
@@ -261,11 +380,25 @@ const styles = themedStyles((colors) => ({
   cmdText: { fontSize: 12.5, fontWeight: '600', flexShrink: 0 },
   cmdDesc: { color: colors.textFaint, fontSize: 10, flex: 1, textAlign: 'right' },
   resultBox: {
-    marginTop: spacing.s,
-    marginBottom: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: spacing.s,
+    marginTop: spacing.xs,
+    marginBottom: spacing.s,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: spacing.s,
     gap: 3,
   },
+  resultHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
+  resultHeadText: { fontSize: 11, flex: 1, fontWeight: '600' },
+  resultHint: { fontSize: 10 },
   resultText: { color: colors.textDim, fontSize: 11, lineHeight: 16 },
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.s,
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+    borderRadius: radius.s,
+  },
+  entryIndex: { fontSize: 12, fontWeight: '700', minWidth: 18, textAlign: 'right' },
+  entryTitle: { color: colors.text, fontSize: 12.5, fontWeight: '600' },
+  entrySub: { color: colors.textFaint, fontSize: 10, marginTop: 1 },
 }));
