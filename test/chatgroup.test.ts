@@ -81,6 +81,28 @@ test('空输入返回空数组', () => {
   assert.deepEqual(buildRows([], { mine: '老王' }), []);
 });
 
+test('关掉进出提示时不打断同一人的合并', () => {
+  const rows = buildRows(
+    [msg(0, 'Steve', T0), msg(2, 'Alex', T0 + 1000), msg(0, 'Steve', T0 + 2000)],
+    { mine: '', showJoinLeave: false },
+  );
+  assert.equal(rows.filter((r) => r.type === 'system').length, 0);
+  const groups = rows.filter((r) => r.type === 'group');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].type === 'group' && groups[0].msgs.length, 2);
+});
+
+test('关掉进出提示时，只有系统行的那天不留空日期头', () => {
+  const day2 = T0 + 24 * 3600 * 1000;
+  const rows = buildRows(
+    [msg(2, 'Alex', T0), msg(0, 'Steve', day2)],
+    { mine: '', showJoinLeave: false, now: day2 },
+  );
+  assert.equal(rows.filter((r) => r.type === 'day').length, 1);
+  assert.equal(rows.filter((r) => r.type === 'system').length, 0);
+  assert.equal(rows.filter((r) => r.type === 'group').length, 1);
+});
+
 test('dayLabel：今天 / 昨天 / 今年更早 / 跨年', () => {
   assert.equal(dayLabel(T0, T0 + 2 * 3600 * 1000), '今天');
   assert.equal(dayLabel(T0 - 24 * 3600 * 1000, T0), '昨天');

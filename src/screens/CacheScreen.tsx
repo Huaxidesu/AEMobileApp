@@ -155,7 +155,7 @@ export default function CacheScreen() {
               label="清理头像缓存"
               icon="trash"
               onPress={confirmClearAvatars}
-              disabled={busy || !avatar || avatar.count === 0}
+              disabled={busy || !avatar}
             />
           </View>
         </SettingsGroup>

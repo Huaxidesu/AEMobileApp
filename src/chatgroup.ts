@@ -69,14 +69,19 @@ type GroupRow = Extract<ChatRow, { type: 'group' }> & {
  */
 export function buildRows(
   msgs: ChatLike[],
-  opts: { mine: string; now?: number },
+  opts: { mine: string; now?: number; showJoinLeave?: boolean },
 ): ChatRow[] {
   const now = opts.now ?? Date.now();
+  const showJoinLeave = opts.showJoinLeave !== false;
   const out: ChatRow[] = [];
   let currentDay = '';
   let group: GroupRow | null = null;
 
   for (const m of msgs) {
+    const isSystem = m.kind === 2 || m.kind === 3;
+    // 关掉进出提示时直接跳过：既不留空日期头，也不打断同一人的 5 分钟合并
+    if (isSystem && !showJoinLeave) continue;
+
     const key = dayKey(m.ts);
     if (key !== currentDay) {
       currentDay = key;
@@ -84,7 +89,7 @@ export function buildRows(
       group = null;
     }
 
-    if (m.kind === 2 || m.kind === 3) {
+    if (isSystem) {
       out.push({ type: 'system', key: `sys:${m.boot}:${m.seq}`, msg: m, join: m.kind === 2 });
       group = null;
       continue;

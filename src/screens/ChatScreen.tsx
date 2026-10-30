@@ -52,8 +52,7 @@ export default function ChatScreen({ navigation }: any) {
   );
 
   const rows = useMemo<ChatRow[]>(() => {
-    const all = buildRows(msgs, { mine: name });
-    return prefs.showJoinLeave ? all : all.filter((r) => r.type !== 'system');
+    return buildRows(msgs, { mine: name, showJoinLeave: prefs.showJoinLeave });
   }, [msgs, name, prefs.showJoinLeave]);
 
   const maxBubbleWidth = Math.round((win.width * prefs.bubbleMaxWidth) / 100);

@@ -3,15 +3,12 @@
 // 不引入图片处理原生模块：把 64×64 皮肤按 size*8 放大，再用 overflow:hidden 的方框
 // 把头部区域框出来。64×32 的老皮肤也能用 —— 头部像素坐标同样是 (8,8)，只是高度更短，
 // 所以只给 width 不给 height，让 Image 自己保持原始比例。
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colorForName, letterOf, useAvatar } from '../avatars';
+import { colorForName, invalidateAvatar, letterOf, useAvatar } from '../avatars';
+import { skinCrop } from '../skincrop';
 import { useTheme } from '../theme';
-
-const HEAD_OFFSET = 8; // 头部正面在皮肤图里的左上角
-const HAT_OFFSET = 40; // 帽子层在皮肤图里的左上角
-const SKIN_SCALE = 8; // 64 → size*8
 
 export function SkinHead({
   name,
@@ -28,10 +25,40 @@ export function SkinHead({
 }) {
   const game = kind === 0 || kind === 2 || kind === 3;
   const av = useAvatar(name, game);
+  const [skinWidth, setSkinWidth] = useState(64);
+  const [failed, setFailed] = useState(false);
+
+  const uri = failed ? null : av.uri;
+
+  // 皮肤可能是 64×64 / 64×32 / 128×128；宽度按真实尺寸算，高度交给 Image 保持比例
+  useEffect(() => {
+    setFailed(false);
+    if (!av.uri) {
+      setSkinWidth(64);
+      return;
+    }
+    let alive = true;
+    Image.getSize(
+      av.uri,
+      (w) => {
+        if (alive && w > 0) setSkinWidth(w);
+      },
+      () => {
+        if (!alive) return;
+        setFailed(true);
+        invalidateAvatar(name);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [av.uri, name]);
+
+  const crop = skinCrop(size, skinWidth);
   if (size <= 0) return null;
   const radius = Math.max(5, Math.round(size * 0.2));
 
-  const face = av.uri ? (
+  const face = uri ? (
     <View
       style={{
         width: size,
@@ -43,24 +70,32 @@ export function SkinHead({
     >
       {/* 底层：头部正面 */}
       <Image
-        source={{ uri: av.uri }}
+        source={{ uri }}
         fadeDuration={0}
+        onError={() => {
+          setFailed(true);
+          invalidateAvatar(name);
+        }}
         style={{
           position: 'absolute',
-          width: size * SKIN_SCALE,
-          left: -HEAD_OFFSET * size,
-          top: -HEAD_OFFSET * size,
+          width: crop.imageWidth,
+          left: crop.left,
+          top: crop.top,
         }}
       />
       {/* 上层：帽子 / 发型（透明区域不影响底层） */}
       <Image
-        source={{ uri: av.uri }}
+        source={{ uri }}
         fadeDuration={0}
+        onError={() => {
+          setFailed(true);
+          invalidateAvatar(name);
+        }}
         style={{
           position: 'absolute',
-          width: size * SKIN_SCALE,
-          left: -HAT_OFFSET * size,
-          top: -HEAD_OFFSET * size,
+          width: crop.imageWidth,
+          left: crop.hatLeft,
+          top: crop.top,
         }}
       />
     </View>

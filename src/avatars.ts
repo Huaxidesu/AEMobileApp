@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
 import * as SQLite from 'expo-sqlite';
+import { Buffer } from 'buffer';
 import { APP_VERSION } from './appinfo';
 import {
   littleSkinNameUrl,
@@ -139,7 +140,13 @@ function saveRow(row: MetaRow): void {
 
 function markFail(key: string, until: number): void {
   try {
-    openDb().runSync('UPDATE avatar SET fail_until = ? WHERE name = ?', until, key);
+    openDb().runSync(
+      `INSERT INTO avatar (name, uuid, source, skin_uri, fetched_at, fail_until)
+       VALUES (?, '', '', '', 0, ?)
+       ON CONFLICT(name) DO UPDATE SET fail_until = excluded.fail_until`,
+      key,
+      until,
+    );
   } catch {
     // 缓存写不进去不影响本次显示
   }
@@ -229,15 +236,30 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function downloadSkin(skin: Skin): Promise<string | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
+    const res = await fetch(skin.skinUrl, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': `AEMobile/${APP_VERSION}` },
+    });
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // 只接受真正的 PNG 头，避免 CDN 返回 200 的 HTML 错误页被当成皮肤
+    if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
+      return null;
+    }
     await FileSystem.makeDirectoryAsync(AVATAR_DIR, { intermediates: true }).catch(() => undefined);
     const uri = `${AVATAR_DIR}${skin.source}-${skin.uuid}.png`;
-    const res = await FileSystem.downloadAsync(skin.skinUrl, uri);
-    if (res.status !== 200) return null;
-    return res.uri;
+    await FileSystem.writeAsStringAsync(uri, Buffer.from(bytes).toString('base64'), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return uri;
   } catch (e) {
     console.warn('[avatar] download failed', e);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -330,11 +352,27 @@ export function useAvatar(name: string | null | undefined, enabled = true): Avat
   }, [key, enabled, name]);
 
   return {
-    uri: entry.uri,
+    // App 消息（enabled=false）永远用默认头像，即使缓存里有同名游戏玩家的皮肤
+    uri: enabled ? entry.uri : null,
     loading: entry.loading,
     letter: letterOf(name),
     color: colorForName(name),
   };
+}
+
+/** 图片加载失败时把缓存标记作废，下一次挂载重新下载；当前立刻回退默认头像 */
+export function invalidateAvatar(name: string | null | undefined): void {
+  const key = name ? keyOf(name) : '';
+  if (!key) return;
+  const prev = entries.get(key);
+  if (prev && prev.uri === null && !prev.loading) return;
+  entries.set(key, { uri: null, loading: false });
+  notify();
+  try {
+    openDb().runSync('DELETE FROM avatar WHERE name = ?', key);
+  } catch {
+    // 数据库没打开过就只在内存里作废
+  }
 }
 
 // ---------------------------------------------------------------- 缓存管理
@@ -365,6 +403,7 @@ export async function avatarCacheStats(): Promise<{ bytes: number; count: number
 export async function clearAvatarCache(): Promise<void> {
   generation += 1;
   entries.clear();
+  inFlight.clear();
   notify();
   try {
     await FileSystem.deleteAsync(AVATAR_DIR, { idempotent: true });

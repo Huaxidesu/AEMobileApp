@@ -52,6 +52,16 @@ function merge(prev: ChatMessage[], add: ChatMessage[]): ChatMessage[] {
   return out.length > MAX_IN_MEMORY ? out.slice(out.length - MAX_IN_MEMORY) : out;
 }
 
+/** 与服务端 `ChatHub.sanitize` 对齐：去方括号/格式码/控制符，按码点截到 16 */
+function cleanName(raw: string): string {
+  const stripped = raw
+    .replace(/§./g, '')
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/[\[\]]/g, '');
+  return Array.from(stripped).slice(0, MAX_NAME).join('').replace(/\s+/g, ' ').trim();
+}
+
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { config, ready } = useConfig();
 
@@ -69,13 +79,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   /** 已入册的消息键，重连补发时用来去重 */
   const seen = useRef<Set<string>>(new Set());
   const activeRef = useRef(false);
+  const myNameRef = useRef('');
   /** 下次订阅要带的游标 */
   const cursor = useRef({ since: 0, boot: 0 });
+
+  myNameRef.current = name;
 
   // 昵称跟账号走：切账号时重新读
   useEffect(() => {
     try {
-      setNameState(getActiveAccount().chatName ?? '');
+      setNameState(cleanName(getActiveAccount().chatName ?? ''));
     } catch {
       setNameState('');
     }
@@ -140,8 +153,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       appendAll(incoming);
       setMsgs((prev) => merge(prev, incoming));
       if (!activeRef.current) {
-        // 玩家进出提示（kind 2/3）不占未读，自己的消息也不占
-        const fresh = incoming.filter((m) => m.kind === 0).length;
+        // 玩家进出提示（kind 2/3）不占未读；自己的 App 消息也不占
+        const fresh = incoming.filter(
+          (m) => m.kind === 0 || (m.kind === 1 && m.name !== myNameRef.current),
+        ).length;
         if (fresh > 0) setUnread((u) => u + fresh);
       }
     });
@@ -155,7 +170,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [scope, connKey, ready]);
 
   const setName = useCallback((next: string) => {
-    const v = next.trim().slice(0, MAX_NAME);
+    const v = cleanName(next);
     setNameState(v);
     try {
       persistChatName(getActiveAccountId(), v);
