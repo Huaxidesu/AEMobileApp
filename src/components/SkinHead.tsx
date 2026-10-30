@@ -1,11 +1,14 @@
-// 头像：游戏内玩家的皮肤头部（本地裁剪 8×8 正面 + 帽子层）/ App 消息的字母默认头像。
+// 头像：游戏内玩家的皮肤头部（Skia 最近邻采样，像素风不发糊）/ App 消息的字母默认头像。
 //
-// 不引入图片处理原生模块：把 64×64 皮肤按 size*8 放大，再用 overflow:hidden 的方框
-// 把头部区域框出来。64×32 的老皮肤也能用 —— 头部像素坐标同样是 (8,8)，只是高度更短，
-// 所以只给 width 不给 height，让 Image 自己保持原始比例。
+// 为什么不用 RN 的 <Image>：Android 的 ImageView 只有双线性过滤，把 8×8 的头部放大到
+// 32–48dp 会糊成一团。LittleSkin 网页上的头像清晰，是因为用了 nearest-neighbor。
+// 这里用 Skia 的 ImageShader + FilterMode.Nearest 直接把皮肤对应区域采出来，边缘是硬的。
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import { Canvas, ImageShader, Rect, Skia } from '@shopify/react-native-skia';
+import type { SkImage } from '@shopify/react-native-skia';
 import { colorForName, invalidateAvatar, letterOf, useAvatar } from '../avatars';
 import { skinCrop } from '../skincrop';
 import { useTheme } from '../theme';
@@ -25,84 +28,79 @@ export function SkinHead({
 }) {
   const game = kind === 0 || kind === 2 || kind === 3;
   const av = useAvatar(name, game);
-  const [skinDims, setSkinDims] = useState({ w: 64, h: 64 });
-  const [failed, setFailed] = useState(false);
+  const uri = game ? av.uri : null;
+  const [skin, setSkin] = useState<SkImage | null>(null);
 
-  const uri = failed ? null : av.uri;
-
-  // 皮肤可能是 64×64 / 64×32 / 128×128；宽高按真实尺寸算
+  // Skia 的 useImage 对 file:// 不一定可靠：自己按 base64 读文件、解码成 SkImage
   useEffect(() => {
-    setFailed(false);
-    if (!av.uri) {
-      setSkinDims({ w: 64, h: 64 });
-      return;
-    }
+    setSkin(null);
+    if (!uri) return;
     let alive = true;
-    Image.getSize(
-      av.uri,
-      (w, h) => {
-        if (alive && w > 0 && h > 0) setSkinDims({ w, h });
-      },
-      () => {
-        // 有些 Android 版本对 file:// 取尺寸会失败：按 64×64 处理，
-        // 不能让「取不到尺寸」把整个头像变成默认字母图。
-      },
-    );
+    FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
+      .then((b64) => {
+        if (!alive) return;
+        const data = Skia.Data.fromBase64(b64);
+        const img = Skia.Image.MakeImageFromEncoded(data);
+        if (!img) {
+          invalidateAvatar(name);
+          return;
+        }
+        setSkin(img);
+      })
+      .catch(() => {
+        if (alive) invalidateAvatar(name);
+      });
     return () => {
       alive = false;
     };
-  }, [av.uri, name]);
+  }, [uri, name]);
 
-  const crop = skinCrop(size, skinDims.w, skinDims.h);
   if (size <= 0) return null;
-  const radius = Math.max(5, Math.round(size * 0.2));
 
-  const face = uri ? (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        overflow: 'hidden',
-        backgroundColor: '#00000022',
-      }}
-    >
-      {/* 底层：头部正面 */}
-      <Image
-        source={{ uri }}
-        fadeDuration={0}
-        onError={() => {
-          setFailed(true);
-          invalidateAvatar(name);
-        }}
+  const radius = Math.max(5, Math.round(size * 0.2));
+  const crop = skin ? skinCrop(size, skin.width(), skin.height()) : null;
+
+  const face =
+    skin && crop ? (
+      <View
         style={{
-          position: 'absolute',
-          width: crop.imageWidth,
-          height: crop.imageHeight,
-          left: crop.left,
-          top: crop.top,
+          width: size,
+          height: size,
+          borderRadius: radius,
+          overflow: 'hidden',
+          backgroundColor: '#00000022',
         }}
-      />
-      {/* 上层：帽子 / 发型（透明区域不影响底层） */}
-      <Image
-        source={{ uri }}
-        fadeDuration={0}
-        onError={() => {
-          setFailed(true);
-          invalidateAvatar(name);
-        }}
-        style={{
-          position: 'absolute',
-          width: crop.imageWidth,
-          height: crop.imageHeight,
-          left: crop.hatLeft,
-          top: crop.top,
-        }}
-      />
-    </View>
-  ) : (
-    <LetterAvatar name={name} size={size} />
-  );
+      >
+        <Canvas style={{ width: size, height: size }}>
+          {/* 底层：头部正面，rect 把皮肤 (8,8) 对齐到画布左上角，最近邻放大 */}
+          <Rect x={0} y={0} width={size} height={size}>
+            <ImageShader
+              image={skin}
+              fit="fill"
+              rect={{ x: crop.left, y: crop.top, width: crop.imageWidth, height: crop.imageHeight }}
+              tx="clamp"
+              ty="clamp"
+              fm="nearest"
+              mm="none"
+            />
+          </Rect>
+          {/* 上层：帽子 / 发型，透明区域不影响底层 */}
+          <Rect x={0} y={0} width={size} height={size}>
+            <ImageShader
+              image={skin}
+              fit="fill"
+              rect={{ x: crop.hatLeft, y: crop.top, width: crop.imageWidth, height: crop.imageHeight }}
+              tx="clamp"
+              ty="clamp"
+              fm="nearest"
+              mm="none"
+            />
+          </Rect>
+        </Canvas>
+      </View>
+    ) : (
+      <LetterAvatar name={name} size={size} />
+    );
 
   if (!badge) return face;
   return (
