@@ -207,8 +207,11 @@ export function CommandSheet({
   const { actions, texts } = useMemo(() => parseOutput(result), [result]);
   const hasResult = busy || !!error || result.length > 0;
 
-  // 结果摘要：优先用最后一行（AllMusic 的「已点歌：xxx」「投票已发起」都在最后）
-  const summary = texts.length ? texts[texts.length - 1] : actions.length ? `${actions.length} 条结果` : '';
+  // 结果摘要：取最后一行「人话」（AllMusic 的「已点歌：xxx」「投票已发起」都在最后），
+  // 跳过 `/music nextpage` 这类纯命令提示
+  const summary =
+    [...texts].reverse().find((t) => !/\/music\s/i.test(t)) ??
+    (actions.length ? `${actions.length} 条结果` : '');
 
   // 执行完把结果滚进视野（结果在面板顶部，命令列表在下面）
   useEffect(() => {
