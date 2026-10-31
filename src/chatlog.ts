@@ -28,6 +28,10 @@ export interface StoredMsg {
   att?: string;
   /** 玩家所在队伍名（ServerUtilities）；空串表示没有队伍 */
   team?: string;
+  /** 队伍颜色码字符（MC 的 `d` / `b` …）；空串表示没有队伍或老服务端 */
+  teamColor?: string;
+  /** 玩家所在世界的显示名；空串表示不知道（服务器广播、App 消息、老服务端都没有） */
+  world?: string;
 }
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -49,6 +53,8 @@ function open(): SQLite.SQLiteDatabase {
        srv   TEXT NOT NULL DEFAULT '',
        att   TEXT NOT NULL DEFAULT '',
        team  TEXT NOT NULL DEFAULT '',
+       team_color TEXT NOT NULL DEFAULT '',
+       world TEXT NOT NULL DEFAULT '',
        PRIMARY KEY (scope, boot, seq)
      );
      CREATE INDEX IF NOT EXISTS idx_msg_ts ON msg (scope, ts);`,
@@ -60,7 +66,8 @@ function open(): SQLite.SQLiteDatabase {
 
 /**
  * 老库升级：`CREATE TABLE IF NOT EXISTS` 不会给已有的表补列。
- * 3.4.0 之前的库只有 7 列，这里按需补 `srv` / `att`，已有的行默认为空串。
+ * 3.4.0 之前的库只有 7 列，这里按需补 `srv` / `att` / `team` / `team_color` / `world`，
+ * 已有的行默认为空串。
  */
 function migrate(d: SQLite.SQLiteDatabase): void {
   try {
@@ -69,6 +76,8 @@ function migrate(d: SQLite.SQLiteDatabase): void {
     if (!has('srv')) d.execSync("ALTER TABLE msg ADD COLUMN srv TEXT NOT NULL DEFAULT ''");
     if (!has('att')) d.execSync("ALTER TABLE msg ADD COLUMN att TEXT NOT NULL DEFAULT ''");
     if (!has('team')) d.execSync("ALTER TABLE msg ADD COLUMN team TEXT NOT NULL DEFAULT ''");
+    if (!has('team_color')) d.execSync("ALTER TABLE msg ADD COLUMN team_color TEXT NOT NULL DEFAULT ''");
+    if (!has('world')) d.execSync("ALTER TABLE msg ADD COLUMN world TEXT NOT NULL DEFAULT ''");
   } catch (e) {
     console.warn('[chat] migrate failed', e);
   }
@@ -90,7 +99,7 @@ export function loadRecent(scope: string): StoredMsg[] {
   try {
     purgeExpired();
     const rows = open().getAllSync<StoredMsg>(
-      `SELECT scope, boot, seq, ts, kind, name, text, srv, att, team
+      `SELECT scope, boot, seq, ts, kind, name, text, srv, att, team, team_color AS teamColor, world
          FROM msg WHERE scope = ? AND ts >= ?
         ORDER BY ts DESC, seq DESC LIMIT ?`,
       scope,
@@ -112,8 +121,8 @@ export function appendAll(rows: StoredMsg[]): void {
     d.withTransactionSync(() => {
       for (const r of rows) {
         d.runSync(
-          `INSERT OR IGNORE INTO msg (scope, boot, seq, ts, kind, name, text, srv, att, team)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO msg (scope, boot, seq, ts, kind, name, text, srv, att, team, team_color, world)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           r.scope,
           r.boot,
           r.seq,
@@ -124,6 +133,8 @@ export function appendAll(rows: StoredMsg[]): void {
           r.srv ?? '',
           r.att ?? '',
           r.team ?? '',
+          r.teamColor ?? '',
+          r.world ?? '',
         );
       }
     });

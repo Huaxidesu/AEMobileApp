@@ -80,6 +80,13 @@ export default function ChatScreen({ navigation }: any) {
   const [pendingCmd, setPendingCmd] = useState<MusicCmd | null>(null);
   /** 命令面板的两个视图：命令列表 / 结果子视图（搜歌、队列用） */
   const [cmdMode, setCmdMode] = useState<'commands' | 'result'>('commands');
+  /**
+   * classic 样式下展开着的那一组的 key。
+   *
+   * 同时只允许展开一个：手机上多行一起撑开会把列表挤得很乱，
+   * 而且玩家点另一个头像时本来就期待上一个收起来。
+   */
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const listRef = useRef<FlatList<ChatRow>>(null);
   const inputRef = useRef<TextInput>(null);
@@ -372,7 +379,16 @@ export default function ChatScreen({ navigation }: any) {
         renderItem={({ item }) => {
           if (item.type === 'day') return <DayDivider label={item.label} />;
           if (item.type === 'system') return <SystemLine msg={item.msg} variant={item.variant} />;
-          return <MessageGroup row={item} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me={name} />;
+          return (
+            <MessageGroup
+              row={item}
+              prefs={prefs}
+              maxBubbleWidth={maxBubbleWidth}
+              me={name}
+              expanded={expandedKey === item.key}
+              onToggleExpand={() => setExpandedKey((k) => (k === item.key ? null : item.key))}
+            />
+          );
         }}
       />
 

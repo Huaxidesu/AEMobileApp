@@ -222,13 +222,15 @@ export interface TpsFull {
 
 /**
  * 推送帧：`m` 的每一行是 `[seq, kind, name, text, ts]`，
- * 后面可跟三个可选字段：`[..., srv, att, team]`。
+ * 后面可跟五个可选字段：`[..., srv, att, team, teamColor, world]`。
  *
  * - `srv`：来源服务器显示名。空串表示本服；群组服里从别的子服转发过来的消息才带值。
  * - `att`：结构化附件的 JSON 数组字符串（物品链接、任务分享），没有时是空串。
  * - `team`：玩家所在队伍名（ServerUtilities），没有时是空串。
+ * - `teamColor`：队伍颜色码字符（MC 的 `d` / `b` …），没有队伍或老服务端时是空串。
+ * - `world`：玩家所在世界的显示名（GTNHChat 已换成中文别名）。服务器广播和 App 消息没有，空串。
  *
- * 老服务端不发后两位，老 App 也只读前五位，两边都能跑。
+ * 老服务端不发后面几位，老 App 也只读前五位，两边都能跑。
  */
 export interface ChatFrame {
   t: 'c';
@@ -238,7 +240,8 @@ export interface ChatFrame {
   seq: number;
   /** 1 = 中间有消息过期（服务端只留 30 秒缓冲） */
   gap?: 1;
-  m: [number, number, string, string, number, string?, string?, string?][];
+  /** 每条：seq, kind, 名字, 正文, 时间, [来源服], [附件 JSON], [队伍名], [队伍颜色码], [世界名] */
+  m: [number, number, string, string, number, string?, string?, string?, string?, string?][];
 }
 
 /**

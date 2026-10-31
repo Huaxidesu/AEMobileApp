@@ -1,9 +1,9 @@
 // 共享 UI 基础组件
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { barrier } from './assets';
-import { themedStyles, useTheme, radius, spacing, card } from './theme';
+import { themedStyles, useTheme, radius, spacing, card, isHexColor } from './theme';
 
 export function StatusDot({ ok, size = 8 }: { ok: boolean; size?: number }) {
   const { colors } = useTheme();
@@ -412,6 +412,91 @@ const inputStyles = themedStyles((colors) => ({
     paddingHorizontal: spacing.m,
   },
   input: { flex: 1, color: colors.text, fontSize: 15, paddingVertical: 11 },
+}));
+
+/** 颜色选择行：十六进制输入 + 预设色板。改到一半（`#F9`）不会写进配置 */
+const COLOR_PRESETS = [
+  '#FB923C', '#F59E0B', '#F87171', '#F472B6',
+  '#A78BFA', '#60A5FA', '#22D3EE', '#34D399',
+  '#4ADE80', '#FACC15', '#9AA4B8', '#E8ECF3',
+];
+
+export function ColorField({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { colors } = useTheme();
+  const [text, setText] = useState(value);
+  // 外部（预设按钮 / 恢复默认）改了颜色时同步输入框
+  useEffect(() => setText(value), [value]);
+
+  return (
+    <View style={colorStyles.field}>
+      <View style={colorStyles.head}>
+        <Text style={colorStyles.label}>{label}</Text>
+        <View style={[colorStyles.hexWrap, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+          <View style={[colorStyles.dot, { backgroundColor: value, borderColor: colors.border }]} />
+          <TextInput
+            style={[colorStyles.input, { color: colors.text }]}
+            value={text}
+            onChangeText={(v) => {
+              setText(v);
+              const s = v.startsWith('#') ? v : `#${v}`;
+              if (isHexColor(s)) onChange(s.toUpperCase());
+            }}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={7}
+            selectTextOnFocus
+          />
+        </View>
+      </View>
+      <View style={colorStyles.swatches}>
+        {COLOR_PRESETS.map((c) => {
+          const on = value.toLowerCase() === c.toLowerCase();
+          return (
+            <TouchableOpacity
+              key={c}
+              onPress={() => onChange(c)}
+              style={[
+                colorStyles.swatch,
+                { backgroundColor: c, borderColor: colors.border },
+                on && { borderColor: colors.text, borderWidth: 2 },
+              ]}
+            />
+          );
+        })}
+      </View>
+      {hint ? <Text style={colorStyles.hint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+const colorStyles = themedStyles((colors) => ({
+  field: { gap: spacing.s, paddingVertical: spacing.m },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  label: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  hexWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: radius.s,
+    borderWidth: 1,
+  },
+  dot: { width: 14, height: 14, borderRadius: 4, borderWidth: 1 },
+  input: { fontSize: 12, fontWeight: '700', minWidth: 62, padding: 0 },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  swatch: { width: 26, height: 26, borderRadius: 7, borderWidth: 1 },
+  hint: { color: colors.textFaint, fontSize: 11, lineHeight: 15 },
 }));
 
 const groupStyles = themedStyles((colors) => ({

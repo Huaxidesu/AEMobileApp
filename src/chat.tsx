@@ -150,8 +150,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const incoming: ChatMessage[] = [];
       for (const row of f.m) {
         if (!Array.isArray(row) || row.length < 5) continue;
-        // 后两位是 3.4.0 加的扩展：来源服务器、结构化附件。老服务端不发，读出来就是 undefined
-        const [seq, kind, who, text, ts, srv, att, team] = row;
+        // 6-10 位是 3.4.0 之后陆续加的扩展：来源服务器、结构化附件、队伍名、队伍颜色、世界名。
+        // 老服务端不发，读出来就是 undefined
+        const [seq, kind, who, text, ts, srv, att, team, teamColor, world] = row;
         const item: ChatMessage = {
           scope,
           boot: f.boot,
@@ -163,6 +164,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           srv: srv ? String(srv) : '',
           att: att ? String(att) : '',
           team: team ? String(team) : '',
+          teamColor: teamColor ? String(teamColor) : '',
+          world: world ? String(world) : '',
         };
         const k = keyOf(item);
         if (seen.current.has(k)) continue;

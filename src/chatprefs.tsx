@@ -2,9 +2,17 @@
 // 和主题/网格一样存 SecureStore，改完立刻生效；聊天页和设置页预览共用。
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { isHexColor } from './theme';
 
 export type ChatDensity = 'compact' | 'standard' | 'cozy';
 export type ChatTimeMode = 'inside' | 'above' | 'hidden';
+/**
+ * 名字行的两种排法。
+ *
+ * - `classic`（默认）：`[团队] 名字`，点一下头像展开 `[服务器][世界]`，收起来不留痕。
+ * - `pills`：`名字 [团队] [服务器] [世界]` 一直显示，不折叠。
+ */
+export type ChatStyle = 'classic' | 'pills';
 
 export interface ChatPrefs {
   /** 正文字号 */
@@ -19,6 +27,12 @@ export interface ChatPrefs {
   showJoinLeave: boolean;
   /** 是否显示玩家完成成就的提示 */
   showAchievements: boolean;
+  /** 名字行排法，见 {@link ChatStyle} */
+  styleMode: ChatStyle;
+  /** 服务器标签的颜色（图标 / 文字 / 描边同色，底色是它的 14% 透明） */
+  serverColor: string;
+  /** 世界标签的颜色 */
+  worldColor: string;
 }
 
 export const CHAT_LIMITS = {
@@ -35,6 +49,9 @@ export const DEFAULT_CHAT: ChatPrefs = {
   timeMode: 'inside',
   showJoinLeave: true,
   showAchievements: true,
+  styleMode: 'classic',
+  serverColor: '#FB923C',
+  worldColor: '#34D399',
 };
 
 /** 三档密度对应的尺寸（页面上只说「紧凑/标准/宽松」） */
@@ -58,6 +75,14 @@ function normalize(p: Partial<ChatPrefs> | null | undefined): ChatPrefs {
     p?.density === 'compact' || p?.density === 'cozy' ? p.density : 'standard';
   const timeMode: ChatTimeMode =
     p?.timeMode === 'above' || p?.timeMode === 'hidden' ? p.timeMode : 'inside';
+  const styleMode: ChatStyle = p?.styleMode === 'pills' ? 'pills' : 'classic';
+  // 颜色只认 #RRGGBB；用户手输到一半（`#F9`）时别把整份配置写坏
+  const serverColor = typeof p?.serverColor === 'string' && isHexColor(p.serverColor)
+    ? p.serverColor.toUpperCase()
+    : DEFAULT_CHAT.serverColor;
+  const worldColor = typeof p?.worldColor === 'string' && isHexColor(p.worldColor)
+    ? p.worldColor.toUpperCase()
+    : DEFAULT_CHAT.worldColor;
   return {
     fontSize: Number.isFinite(fontSize) ? clamp(fontSize, 12, 20) : DEFAULT_CHAT.fontSize,
     avatarSize: CHAT_LIMITS.avatarSize.options.includes(avatarSize) ? avatarSize : DEFAULT_CHAT.avatarSize,
@@ -66,6 +91,9 @@ function normalize(p: Partial<ChatPrefs> | null | undefined): ChatPrefs {
     timeMode,
     showJoinLeave: p?.showJoinLeave !== false,
     showAchievements: p?.showAchievements !== false,
+    styleMode,
+    serverColor,
+    worldColor,
   };
 }
 
@@ -87,6 +115,9 @@ interface ChatPrefsCtx {
   setTimeMode: (m: ChatTimeMode) => void;
   setShowJoinLeave: (v: boolean) => void;
   setShowAchievements: (v: boolean) => void;
+  setStyleMode: (s: ChatStyle) => void;
+  setServerColor: (c: string) => void;
+  setWorldColor: (c: string) => void;
   reset: () => void;
 }
 
@@ -115,6 +146,9 @@ export function ChatPrefsProvider({ children }: { children: React.ReactNode }) {
       setTimeMode: (m) => update({ ...prefs, timeMode: m }),
       setShowJoinLeave: (v) => update({ ...prefs, showJoinLeave: v }),
       setShowAchievements: (v) => update({ ...prefs, showAchievements: v }),
+      setStyleMode: (s) => update({ ...prefs, styleMode: s }),
+      setServerColor: (c) => update({ ...prefs, serverColor: c }),
+      setWorldColor: (c) => update({ ...prefs, worldColor: c }),
       reset: () => update(DEFAULT_CHAT),
     }),
     [prefs, update],
@@ -135,6 +169,9 @@ export function useChatPrefs(): ChatPrefsCtx {
       setTimeMode: () => {},
       setShowJoinLeave: () => {},
       setShowAchievements: () => {},
+      setStyleMode: () => {},
+      setServerColor: () => {},
+      setWorldColor: () => {},
       reset: () => {},
     }
   );

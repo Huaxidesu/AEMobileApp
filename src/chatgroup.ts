@@ -18,6 +18,10 @@ export interface ChatLike {
   att?: string;
   /** 玩家所在队伍名（ServerUtilities）；空表示没有队伍 */
   team?: string;
+  /** 队伍颜色码字符（MC 的 `d` / `b` …）；空表示没有队伍或老服务端 */
+  teamColor?: string;
+  /** 玩家所在世界的显示名；空表示不知道（服务器广播、App 消息、老服务端都没有） */
+  world?: string;
 }
 
 /** 居中系统行的来源 */
@@ -36,6 +40,10 @@ export type ChatRow =
       srv?: string;
       /** 队伍名，没有队伍为空 */
       team?: string;
+      /** 队伍颜色码（MC 的 `d` / `b` …），名字用它上色；空表示没有队伍 */
+      teamColor?: string;
+      /** 玩家所在世界显示名；空表示不知道 */
+      world?: string;
       msgs: ChatLike[];
     };
 
@@ -121,10 +129,12 @@ export function buildRows(
       continue;
     }
 
-    // 分组身份要带上来源服务器：群组服里不同子服可以有同名玩家，不能并到一起
+    // 分组身份要带上来源服务器和世界：群组服里不同子服可以有同名玩家，
+    // 同一个人换了世界也要另起一组（否则世界标签会挂在整组头上，后面的消息全是错的）
     const srv = m.srv ?? '';
+    const world = m.world ?? '';
     // 队伍也算分组身份：换了队伍要另起一组
-    const ident = `${m.kind}:${srv}:${m.team ?? ''}:${m.name}`;
+    const ident = `${m.kind}:${srv}:${world}:${m.team ?? ''}:${m.name}`;
     if (group && group.ident === ident && m.ts - group.lastTs <= MERGE_MS) {
       group.msgs.push(m);
       group.lastTs = m.ts;
@@ -139,6 +149,8 @@ export function buildRows(
       mine: m.kind === 1 && m.name === opts.mine,
       srv,
       team: m.team ?? '',
+      teamColor: m.teamColor ?? '',
+      world,
       msgs: [m],
       ident,
       lastTs: m.ts,

@@ -135,3 +135,32 @@ test('本服消息没有来源服务器', () => {
   const g = rows.find((r) => r.type === 'group');
   assert.equal(g?.type === 'group' && g.srv, '');
 });
+
+test('同一世界照常合并，分组带上世界名', () => {
+  const a = { ...msg(0, 'Steve', T0), world: '主世界' };
+  const b = { ...msg(0, 'Steve', T0 + MIN), world: '主世界' };
+  const rows = buildRows([a, b], { mine: '' });
+  const groups = rows.filter((r) => r.type === 'group');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].type === 'group' && groups[0].msgs.length, 2);
+  assert.equal(groups[0].type === 'group' && groups[0].world, '主世界');
+});
+
+test('同一个人换了世界要另起一组（否则世界标签会挂错）', () => {
+  const a = { ...msg(0, 'Steve', T0), world: '主世界' };
+  const b = { ...msg(0, 'Steve', T0 + MIN), world: '下界' };
+  const rows = buildRows([a, b], { mine: '' });
+  const groups = rows.filter((r) => r.type === 'group');
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].type === 'group' && groups[0].world, '主世界');
+  assert.equal(groups[1].type === 'group' && groups[1].world, '下界');
+});
+
+test('没有世界名的消息不并进有世界名的组', () => {
+  const a = { ...msg(0, 'Steve', T0), world: '主世界' };
+  const b = msg(0, 'Steve', T0 + MIN); // 老服务端不发世界名
+  const rows = buildRows([a, b], { mine: '' });
+  const groups = rows.filter((r) => r.type === 'group');
+  assert.equal(groups.length, 2);
+  assert.equal(groups[1].type === 'group' && groups[1].world, '');
+});

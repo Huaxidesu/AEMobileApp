@@ -1,6 +1,6 @@
 // 聊天外观：字号 / 头像大小 / 气泡宽度 / 消息间距 / 时间位置 / 进出提示 / 成就提示。
 // 改完立刻生效，预览用聊天页同一套 MessageGroup 组件渲染。
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { themedStyles, useTheme, spacing, radius } from '../theme';
@@ -8,7 +8,7 @@ import { CHAT_LIMITS, useChatPrefs } from '../chatprefs';
 import type { ChatDensity, ChatTimeMode } from '../chatprefs';
 import { DayDivider, MessageGroup, SystemLine } from '../chatview';
 import type { ChatRow } from '../chatgroup';
-import { GhostButton, Segmented } from '../components';
+import { ColorField, GhostButton, Segmented } from '../components';
 
 type GroupRow = Extract<ChatRow, { type: 'group' }>;
 
@@ -75,9 +75,13 @@ export default function ChatAppearanceScreen() {
     setTimeMode,
     setShowJoinLeave,
     setShowAchievements,
+    setServerColor,
+    setWorldColor,
     reset,
   } = useChatPrefs();
   const win = useWindowDimensions();
+  /** 预览里点一下头像就能看到 classic 样式的展开效果 */
+  const [expanded, setExpanded] = useState(false);
 
   const now = Date.now();
   const msg = (seq: number, kind: number, name: string, text: string, dt: number) => ({
@@ -94,6 +98,9 @@ export default function ChatAppearanceScreen() {
     name: 'Steve',
     kind: 0,
     mine: false,
+    team: '华溪岛',
+    teamColor: 'd',
+    world: '主世界',
     msgs: [
       msg(1, 0, 'Steve', '§e晚上开荒§r，谁来？', -4 * 60000),
       msg(2, 0, 'Steve', '§b@我§r 缺个挖矿的', -3 * 60000),
@@ -105,6 +112,8 @@ export default function ChatAppearanceScreen() {
     name: '手机老王',
     kind: 1,
     mine: false,
+    srv: '天空树',
+    world: '下界',
     msgs: [msg(3, 1, '手机老王', '我在外面，先用手机跟一句', -2 * 60000)],
   };
   const mineRow: GroupRow = {
@@ -136,12 +145,42 @@ export default function ChatAppearanceScreen() {
             {prefs.showAchievements ? (
               <SystemLine msg={msg(6, 6, 'Steve', '获得木头', -4.5 * 60000)} variant="achievement" />
             ) : null}
-            <MessageGroup row={other} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me="我" />
+            <MessageGroup
+              row={other}
+              prefs={prefs}
+              maxBubbleWidth={maxBubbleWidth}
+              me="我"
+              expanded={expanded}
+              onToggleExpand={() => setExpanded((v) => !v)}
+            />
             <MessageGroup row={appOther} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me="我" />
             <MessageGroup row={mineRow} prefs={prefs} maxBubbleWidth={maxBubbleWidth} me="我" />
           </View>
           <Text style={styles.footnote}>
-            预览与聊天页使用同一套组件。头像只在游戏内玩家的第一条消息旁显示，连续发言会并成一组。
+            预览与聊天页使用同一套组件。头像只在游戏内玩家的第一条消息旁显示，连续发言会并成一组；
+            点一下预览里的头像可以展开服务器和世界标签。
+          </Text>
+        </View>
+
+        <View>
+          <Text style={styles.groupTitle}>标签颜色</Text>
+          <View style={styles.card}>
+            <ColorField
+              label="服务器"
+              hint="地球图标、文字和描边同色；默认橙色"
+              value={prefs.serverColor}
+              onChange={setServerColor}
+            />
+            <View style={styles.divider} />
+            <ColorField
+              label="世界"
+              hint="地图图标、文字和描边同色；默认绿色"
+              value={prefs.worldColor}
+              onChange={setWorldColor}
+            />
+          </View>
+          <Text style={styles.footnote}>
+            队伍标签和玩家名跟着 ServerUtilities 里配的队伍颜色走，这里改不了；没队伍的玩家名字是白色。
           </Text>
         </View>
 

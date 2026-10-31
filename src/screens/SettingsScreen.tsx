@@ -131,6 +131,17 @@ export default function SettingsScreen({ navigation }: any) {
             onPress={() => navigation.navigate('ChatName')}
           />
           <SettingsRow
+            icon="albums-outline"
+            label="聊天样式"
+            value={chatPrefs.styleMode === 'pills' ? '标签常驻' : '经典'}
+            detail={
+              chatPrefs.styleMode === 'pills'
+                ? '名字在最前，队伍 / 服务器 / 世界一直显示'
+                : '名字行只有队伍，点头像展开服务器和世界'
+            }
+            onPress={() => navigation.navigate('ChatStyle')}
+          />
+          <SettingsRow
             icon="text-outline"
             label="聊天外观"
             value={`${chatPrefs.fontSize}px · 头像 ${chatPrefs.avatarSize || '关'}`}
