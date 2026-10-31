@@ -22,6 +22,10 @@ export interface StoredMsg {
   kind: number;
   name: string;
   text: string;
+  /** 来源服务器显示名；空串表示本服（群组服里才有值） */
+  srv?: string;
+  /** 结构化附件的 JSON 数组字符串；空串表示没有 */
+  att?: string;
 }
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -40,12 +44,30 @@ function open(): SQLite.SQLiteDatabase {
        kind  INTEGER NOT NULL,
        name  TEXT NOT NULL,
        text  TEXT NOT NULL,
+       srv   TEXT NOT NULL DEFAULT '',
+       att   TEXT NOT NULL DEFAULT '',
        PRIMARY KEY (scope, boot, seq)
      );
      CREATE INDEX IF NOT EXISTS idx_msg_ts ON msg (scope, ts);`,
   );
+  migrate(d);
   db = d;
   return d;
+}
+
+/**
+ * 老库升级：`CREATE TABLE IF NOT EXISTS` 不会给已有的表补列。
+ * 3.4.0 之前的库只有 7 列，这里按需补 `srv` / `att`，已有的行默认为空串。
+ */
+function migrate(d: SQLite.SQLiteDatabase): void {
+  try {
+    const cols = d.getAllSync<{ name: string }>('PRAGMA table_info(msg)');
+    const has = (n: string) => cols.some((c) => c.name === n);
+    if (!has('srv')) d.execSync("ALTER TABLE msg ADD COLUMN srv TEXT NOT NULL DEFAULT ''");
+    if (!has('att')) d.execSync("ALTER TABLE msg ADD COLUMN att TEXT NOT NULL DEFAULT ''");
+  } catch (e) {
+    console.warn('[chat] migrate failed', e);
+  }
 }
 
 /** 清掉超过 7 天的；每 10 分钟最多跑一次，避免每条消息都全表扫 */
@@ -64,7 +86,7 @@ export function loadRecent(scope: string): StoredMsg[] {
   try {
     purgeExpired();
     const rows = open().getAllSync<StoredMsg>(
-      `SELECT scope, boot, seq, ts, kind, name, text
+      `SELECT scope, boot, seq, ts, kind, name, text, srv, att
          FROM msg WHERE scope = ? AND ts >= ?
         ORDER BY ts DESC, seq DESC LIMIT ?`,
       scope,
@@ -86,8 +108,8 @@ export function appendAll(rows: StoredMsg[]): void {
     d.withTransactionSync(() => {
       for (const r of rows) {
         d.runSync(
-          `INSERT OR IGNORE INTO msg (scope, boot, seq, ts, kind, name, text)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO msg (scope, boot, seq, ts, kind, name, text, srv, att)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           r.scope,
           r.boot,
           r.seq,
@@ -95,6 +117,8 @@ export function appendAll(rows: StoredMsg[]): void {
           r.kind,
           r.name,
           r.text,
+          r.srv ?? '',
+          r.att ?? '',
         );
       }
     });

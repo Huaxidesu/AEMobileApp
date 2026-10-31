@@ -109,3 +109,29 @@ test('dayLabel：今天 / 昨天 / 今年更早 / 跨年', () => {
   assert.equal(dayLabel(new Date(2026, 8, 1, 9, 0).getTime(), T0), '9月1日');
   assert.equal(dayLabel(new Date(2025, 11, 24, 9, 0).getTime(), T0), '2025年12月24日');
 });
+
+test('群组服：不同来源服务器的同名玩家不并成一组', () => {
+  const a = { ...msg(0, 'Steve', T0), srv: '生存服' };
+  const b = { ...msg(0, 'Steve', T0 + MIN), srv: '创造服' };
+  const rows = buildRows([a, b], { mine: '' });
+  const groups = rows.filter((r) => r.type === 'group');
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].type === 'group' && groups[0].srv, '生存服');
+  assert.equal(groups[1].type === 'group' && groups[1].srv, '创造服');
+});
+
+test('群组服：同一服务器的同一玩家照常合并，分组带来源', () => {
+  const a = { ...msg(0, 'Steve', T0), srv: '生存服' };
+  const b = { ...msg(0, 'Steve', T0 + MIN), srv: '生存服' };
+  const rows = buildRows([a, b], { mine: '' });
+  const groups = rows.filter((r) => r.type === 'group');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].type === 'group' && groups[0].msgs.length, 2);
+  assert.equal(groups[0].type === 'group' && groups[0].srv, '生存服');
+});
+
+test('本服消息没有来源服务器', () => {
+  const rows = buildRows([msg(0, 'Steve', T0)], { mine: '' });
+  const g = rows.find((r) => r.type === 'group');
+  assert.equal(g?.type === 'group' && g.srv, '');
+});

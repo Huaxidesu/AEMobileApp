@@ -14,6 +14,7 @@ import { getActiveAccount, getActiveAccountId, setChatName as persistChatName } 
 import { appendAll, clearScope, loadRecent } from './chatlog';
 import type { StoredMsg } from './chatlog';
 import { serverKey } from './cache';
+import { warmup } from './zhdict';
 
 /** 内存里最多留这么多条（再多也没人往下翻，SQLite 里还有完整的 7 天） */
 const MAX_IN_MEMORY = 600;
@@ -87,6 +88,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   myNameRef.current = name;
 
+  // 中文名字典约 2.4 万条，解析一次要几十毫秒；推迟到首屏渲染完再做
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        warmup();
+      } catch (e) {
+        console.warn('[chat] zhdict warmup failed', e);
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   // 昵称跟账号走：切账号时重新读
   useEffect(() => {
     try {
@@ -137,8 +150,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const incoming: ChatMessage[] = [];
       for (const row of f.m) {
         if (!Array.isArray(row) || row.length < 5) continue;
-        const [seq, kind, who, text, ts] = row;
-        const item: ChatMessage = { scope, boot: f.boot, seq, ts, kind, name: String(who), text: String(text) };
+        // 后两位是 3.4.0 加的扩展：来源服务器、结构化附件。老服务端不发，读出来就是 undefined
+        const [seq, kind, who, text, ts, srv, att] = row;
+        const item: ChatMessage = {
+          scope,
+          boot: f.boot,
+          seq,
+          ts,
+          kind,
+          name: String(who),
+          text: String(text),
+          srv: srv ? String(srv) : '',
+          att: att ? String(att) : '',
+        };
         const k = keyOf(item);
         if (seen.current.has(k)) continue;
         seen.current.add(k);

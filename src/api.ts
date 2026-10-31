@@ -220,7 +220,15 @@ export interface TpsFull {
 
 // ---- 聊天（op = "chat" 订阅 / "chatSend" 请求） ----
 
-/** 推送帧：`m` 的每一行是 `[seq, kind, name, text, ts]`（kind 0=玩家 1=App 2=加入 3=退出 4=服务器 5=AllMusic） */
+/**
+ * 推送帧：`m` 的每一行是 `[seq, kind, name, text, ts]`，
+ * 后面可跟两个可选字段：`[..., srv, att]`。
+ *
+ * - `srv`：来源服务器显示名。空串表示本服；群组服里从别的子服转发过来的消息才带值。
+ * - `att`：结构化附件的 JSON 数组字符串（物品链接、任务分享），没有时是空串。
+ *
+ * 老服务端不发后两位，老 App 也只读前五位，两边都能跑。
+ */
 export interface ChatFrame {
   t: 'c';
   /** 服务端这次启动的标识；变了说明服务端重启过（seq 归零） */
@@ -229,7 +237,7 @@ export interface ChatFrame {
   seq: number;
   /** 1 = 中间有消息过期（服务端只留 30 秒缓冲） */
   gap?: 1;
-  m: [number, number, string, string, number][];
+  m: [number, number, string, string, number, string?, string?][];
 }
 
 /**

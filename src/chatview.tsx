@@ -7,6 +7,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colorForName } from './avatars';
 import { SkinHead } from './components/SkinHead';
+import { AttachChips } from './components/ChatAttach';
+import { zh } from './zhdict';
 import { DENSITY } from './chatprefs';
 import type { ChatPrefs } from './chatprefs';
 import type { ChatLike, ChatRow, SystemVariant } from './chatgroup';
@@ -59,7 +61,7 @@ export function SystemLine({ msg, variant }: { msg: ChatLike; variant: SystemVar
       <Text style={[styles.systemText, { color: colors.textFaint }]} numberOfLines={2}>
         {msg.name || '未知玩家'} {conf.tail}
         {variant === 'achievement' && msg.text ? (
-          <Text style={{ color: colors.textDim, fontWeight: '600' }}> {msg.text}</Text>
+          <Text style={{ color: colors.textDim, fontWeight: '600' }}> {zh(msg.text)}</Text>
         ) : null}
       </Text>
     </View>
@@ -72,6 +74,27 @@ function kindIcon(kind: number): { name: any; color: 'textFaint' | 'accent' | 't
   if (kind === 4) return { name: 'megaphone', color: 'textDim' };
   if (kind === 5) return { name: 'disc', color: 'accent' };
   return null;
+}
+
+/**
+ * 来源服务器标签。群组服里消息会从别的子服转发过来，只有这种消息才带 `srv`；
+ * 本服的消息不显示，避免每一条都挂一个多余的前缀。
+ */
+function SrvTag({ label }: { label: string }) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        styles.srvTag,
+        { backgroundColor: colors.surfaceAlt, borderColor: alpha(colors.textFaint, 0.28) },
+      ]}
+    >
+      <Ionicons name="server-outline" size={9} color={colors.textFaint} />
+      <Text style={[styles.srvText, { color: colors.textFaint }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
 }
 
 /** 一组同一发送者的消息（Telegram 的连珠气泡） */
@@ -115,6 +138,7 @@ export function MessageGroup({
       <View style={{ maxWidth: maxBubbleWidth, flexShrink: 1 }}>
         {!mine ? (
           <View style={styles.nameRow}>
+            {row.srv ? <SrvTag label={row.srv} /> : null}
             <Text style={[styles.nameText, { color: nameColor, fontSize: Math.max(10, prefs.fontSize - 2) }]} numberOfLines={1}>
               {row.name || '未知玩家'}
             </Text>
@@ -167,6 +191,8 @@ export function MessageGroup({
                     <Text style={{ color: colors.textFaint, fontSize: timeSize, marginLeft: 8 }}>{timeLabel(m.ts)}</Text>
                   ) : null}
                 </View>
+                {/* 物品链接 / 任务分享：正文里已经被摘掉，这里画成可展开的胶囊 */}
+                <AttachChips att={m.att} />
               </View>
             </View>
           );
@@ -193,4 +219,16 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2, marginLeft: 3 },
   nameText: { fontWeight: '700', flexShrink: 1 },
   aboveTime: { marginBottom: 2, marginHorizontal: 3 },
+  srvTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginRight: 5,
+    maxWidth: 96,
+  },
+  srvText: { fontSize: 9, fontWeight: '600' },
 });
