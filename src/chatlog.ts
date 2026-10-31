@@ -26,6 +26,8 @@ export interface StoredMsg {
   srv?: string;
   /** 结构化附件的 JSON 数组字符串；空串表示没有 */
   att?: string;
+  /** 玩家所在队伍名（ServerUtilities）；空串表示没有队伍 */
+  team?: string;
 }
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -46,6 +48,7 @@ function open(): SQLite.SQLiteDatabase {
        text  TEXT NOT NULL,
        srv   TEXT NOT NULL DEFAULT '',
        att   TEXT NOT NULL DEFAULT '',
+       team  TEXT NOT NULL DEFAULT '',
        PRIMARY KEY (scope, boot, seq)
      );
      CREATE INDEX IF NOT EXISTS idx_msg_ts ON msg (scope, ts);`,
@@ -65,6 +68,7 @@ function migrate(d: SQLite.SQLiteDatabase): void {
     const has = (n: string) => cols.some((c) => c.name === n);
     if (!has('srv')) d.execSync("ALTER TABLE msg ADD COLUMN srv TEXT NOT NULL DEFAULT ''");
     if (!has('att')) d.execSync("ALTER TABLE msg ADD COLUMN att TEXT NOT NULL DEFAULT ''");
+    if (!has('team')) d.execSync("ALTER TABLE msg ADD COLUMN team TEXT NOT NULL DEFAULT ''");
   } catch (e) {
     console.warn('[chat] migrate failed', e);
   }
@@ -86,7 +90,7 @@ export function loadRecent(scope: string): StoredMsg[] {
   try {
     purgeExpired();
     const rows = open().getAllSync<StoredMsg>(
-      `SELECT scope, boot, seq, ts, kind, name, text, srv, att
+      `SELECT scope, boot, seq, ts, kind, name, text, srv, att, team
          FROM msg WHERE scope = ? AND ts >= ?
         ORDER BY ts DESC, seq DESC LIMIT ?`,
       scope,
@@ -108,8 +112,8 @@ export function appendAll(rows: StoredMsg[]): void {
     d.withTransactionSync(() => {
       for (const r of rows) {
         d.runSync(
-          `INSERT OR IGNORE INTO msg (scope, boot, seq, ts, kind, name, text, srv, att)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO msg (scope, boot, seq, ts, kind, name, text, srv, att, team)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           r.scope,
           r.boot,
           r.seq,
@@ -119,6 +123,7 @@ export function appendAll(rows: StoredMsg[]): void {
           r.text,
           r.srv ?? '',
           r.att ?? '',
+          r.team ?? '',
         );
       }
     });

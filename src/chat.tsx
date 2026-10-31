@@ -151,7 +151,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       for (const row of f.m) {
         if (!Array.isArray(row) || row.length < 5) continue;
         // 后两位是 3.4.0 加的扩展：来源服务器、结构化附件。老服务端不发，读出来就是 undefined
-        const [seq, kind, who, text, ts, srv, att] = row;
+        const [seq, kind, who, text, ts, srv, att, team] = row;
         const item: ChatMessage = {
           scope,
           boot: f.boot,
@@ -162,6 +162,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           text: String(text),
           srv: srv ? String(srv) : '',
           att: att ? String(att) : '',
+          team: team ? String(team) : '',
         };
         const k = keyOf(item);
         if (seen.current.has(k)) continue;
@@ -241,6 +242,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         kind: 7,
         name: '点歌',
         text: t,
+        team: '',
       };
       appendAll([item]);
       setMsgs((prev) => merge(prev, [item]));

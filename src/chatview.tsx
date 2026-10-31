@@ -76,6 +76,24 @@ function kindIcon(kind: number): { name: any; color: 'textFaint' | 'accent' | 't
   return null;
 }
 
+/** 队伍标签。只显示名字，不做悬停详情（服务端已经给了简介/职位，手机端用不上） */
+function TeamTag({ label }: { label: string }) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[
+        styles.srvTag,
+        { backgroundColor: colors.accent2Soft, borderColor: alpha(colors.accent2, 0.35) },
+      ]}
+    >
+      <Ionicons name="people-outline" size={9} color={colors.accent2} />
+      <Text style={[styles.srvText, { color: colors.accent2 }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 /**
  * 来源服务器标签。群组服里消息会从别的子服转发过来，只有这种消息才带 `srv`；
  * 本服的消息不显示，避免每一条都挂一个多余的前缀。
@@ -139,6 +157,7 @@ export function MessageGroup({
         {!mine ? (
           <View style={styles.nameRow}>
             {row.srv ? <SrvTag label={row.srv} /> : null}
+            {row.team ? <TeamTag label={row.team} /> : null}
             <Text style={[styles.nameText, { color: nameColor, fontSize: Math.max(10, prefs.fontSize - 2) }]} numberOfLines={1}>
               {row.name || '未知玩家'}
             </Text>

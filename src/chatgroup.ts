@@ -16,6 +16,8 @@ export interface ChatLike {
   srv?: string;
   /** 结构化附件的 JSON 数组字符串；空表示没有 */
   att?: string;
+  /** 玩家所在队伍名（ServerUtilities）；空表示没有队伍 */
+  team?: string;
 }
 
 /** 居中系统行的来源 */
@@ -32,6 +34,8 @@ export type ChatRow =
       mine: boolean;
       /** 来源服务器显示名，本服为空（设置页预览这类手工构造的行可以不填） */
       srv?: string;
+      /** 队伍名，没有队伍为空 */
+      team?: string;
       msgs: ChatLike[];
     };
 
@@ -119,7 +123,8 @@ export function buildRows(
 
     // 分组身份要带上来源服务器：群组服里不同子服可以有同名玩家，不能并到一起
     const srv = m.srv ?? '';
-    const ident = `${m.kind}:${srv}:${m.name}`;
+    // 队伍也算分组身份：换了队伍要另起一组
+    const ident = `${m.kind}:${srv}:${m.team ?? ''}:${m.name}`;
     if (group && group.ident === ident && m.ts - group.lastTs <= MERGE_MS) {
       group.msgs.push(m);
       group.lastTs = m.ts;
@@ -133,6 +138,7 @@ export function buildRows(
       kind: m.kind,
       mine: m.kind === 1 && m.name === opts.mine,
       srv,
+      team: m.team ?? '',
       msgs: [m],
       ident,
       lastTs: m.ts,
