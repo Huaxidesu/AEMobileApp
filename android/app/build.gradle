@@ -77,6 +77,27 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
+/**
+ * 发布签名。
+ *
+ * 口令在仓库根的 `keystore.properties`（**gitignored**），keystore 本身放在仓库外
+ * （默认 `D:/Develop/Game/keys/aemobile-release.jks`）—— 放在 android/ 里会被
+ * `expo prebuild --clean` 连目录一起删掉。
+ *
+ * 读不到就退回 debug 签名，并在构建日志里大声提醒：**debug 签名的包不能覆盖已发布版本**，
+ * 而且仓库里的 debug.keystore 是公开的，谁都能签同名更新。
+ *
+ * ⚠️ 换签名意味着所有已装用户必须先卸载再装（包名相同但签名不同，Android 直接拒装）。
+ */
+def keystorePropsFile = new File(rootProject.projectDir, "../keystore.properties")
+def hasReleaseKey = keystorePropsFile.exists()
+def releaseSigning = new Properties()
+if (hasReleaseKey) {
+    keystorePropsFile.withInputStream { releaseSigning.load(it) }
+} else {
+    logger.warn("⚠️ 没有 keystore.properties，本次用 debug 签名（不能覆盖已发布版本）")
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -98,15 +119,22 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseKey) {
+            release {
+                storeFile file(releaseSigning['storeFile'])
+                storePassword releaseSigning['storePassword']
+                keyAlias releaseSigning['keyAlias']
+                keyPassword releaseSigning['keyPassword']
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // 有 keystore.properties 就用自己的 key（玩家能直接覆盖安装），否则退回 debug
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
