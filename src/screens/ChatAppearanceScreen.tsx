@@ -167,7 +167,7 @@ export default function ChatAppearanceScreen() {
           <View style={styles.card}>
             <ColorField
               label="服务器"
-              hint="地球图标、文字和描边同色；本服消息显示成灰色，只有跨服消息才用这个颜色"
+              hint="地球图标、文字和描边同色；本服和跨服都用这个颜色"
               value={prefs.serverColor}
               onChange={setServerColor}
             />

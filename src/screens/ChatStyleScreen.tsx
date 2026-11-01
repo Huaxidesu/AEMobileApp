@@ -139,9 +139,7 @@ export default function ChatStyleScreen() {
           </View>
           <View style={styles.legendRow}>
             <Ionicons name="earth-outline" size={13} color={prefs.serverColor} />
-            <Text style={styles.legendText}>
-              服务器 —— 跨服消息用这个颜色（在「聊天外观」里配，默认橙色），本服消息是灰色
-            </Text>
+            <Text style={styles.legendText}>服务器 —— 颜色在「聊天外观」里配，默认橙色</Text>
           </View>
           <View style={styles.legendRow}>
             <Ionicons name="map-outline" size={13} color={prefs.worldColor} />
