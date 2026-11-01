@@ -109,8 +109,8 @@ android {
         applicationId 'dev.youtiao.aemonitor'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 37
-        versionName "3.4.1"
+        versionCode 38
+        versionName "3.4.2"
     }
     signingConfigs {
         debug {

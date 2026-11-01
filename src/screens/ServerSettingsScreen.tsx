@@ -61,8 +61,16 @@ export default function ServerSettingsScreen({ navigation }: any) {
     setTested(null);
   }
 
+  /**
+   * 表单 → 账号对象。
+   *
+   * **必须先展开原账号**：这个对象会整份覆盖存储里的账号，只列表单字段的话，
+   * 聊天昵称（`chatName`）这类不在表单里的字段会被抹掉 —— 表现是「改完密码，
+   * 进聊天页又要你起个名字」（2026-11-01 踩过）。
+   */
   function formAccount(): ServerAccount {
-    return { id: activeId, name, scheme, ip, port, token, mainnet, updatedAt: Date.now() };
+    const prev = loadAccounts().find((a) => a.id === activeId);
+    return { ...(prev ?? ({} as ServerAccount)), id: activeId, name, scheme, ip, port, token, mainnet, updatedAt: Date.now() };
   }
 
   useEffect(() => {
