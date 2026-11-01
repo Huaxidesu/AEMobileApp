@@ -134,6 +134,16 @@ function attHint(att?: string): string {
   }
 }
 
+/**
+ * 正文里混着 BetterQuesting 的分享标记（`betterquesting.msg.sharequest:<id>`）。
+ *
+ * 老服务端会把玩家的原始输入（就是那串标记）当正文发过来，手机上显示的是一串乱码。
+ * 服务端已经改成正文留空了，这里兜住历史消息。
+ */
+function looksLikeQuestMarker(text?: string): boolean {
+  return !!text && text.indexOf('betterquesting.msg.sharequest:') >= 0;
+}
+
 /** 三种标签的图标：全部用 Ionicons 的线性（-outline）系列，画风一致、颜色随文字走 */
 const TAG_ICON = {
   team: 'people-outline',
@@ -337,6 +347,8 @@ export function MessageGroup({
 
         {row.msgs.map((m, i) => {
           const first = i === 0;
+          // 任务是 BQ 的分享标记时不显示正文（历史消息里还留着），改由 attHint 出「分享了任务」
+          const bodyText = looksLikeQuestMarker(m.text) ? '' : m.text;
           const bubbleRadius = Math.max(10, prefs.fontSize + 2);
           const tight = 5;
           return (
@@ -361,9 +373,9 @@ export function MessageGroup({
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', flexShrink: 1 }}>
-                  {m.text || !m.att ? (
+                  {bodyText || !m.att ? (
                     <McText
-                      text={m.text}
+                      text={bodyText}
                       selectable
                       highlight={me}
                       highlightColor={colors.accent}
