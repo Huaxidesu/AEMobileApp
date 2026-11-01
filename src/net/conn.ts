@@ -11,7 +11,7 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { FrameDecoder, PROTOCOL_VERSION, T, encodeFrame } from './protocol';
 import { serverNowSec, setClockOffset, tcpAuth } from '../auth';
-import { setLocalServerName } from '../serverinfo';
+import { setCaps, setLocalServerName } from '../serverinfo';
 
 export interface ConnTarget {
   ip: string;
@@ -258,6 +258,9 @@ class TcpClient {
         this.serverVersion = String(payload?.ver ?? '');
         // 本服显示名（群组服里叫「天空树」这种）；老服务端不给就是空串
         setLocalServerName(String(payload?.srv ?? ''));
+        // 这台服能提供哪些可选能力（chat / team / world / relay）；
+        // 老服务端没有这个字段 → 记成「不知道」，UI 按原样显示
+        setCaps(payload?.caps);
         this.sendAuth();
         break;
       }
@@ -521,6 +524,9 @@ export async function requestOnce<T = any>(
       for (const f of frames) {
         if (f.type === T.HELLO_ACK) {
           if (typeof f.payload?.time === 'number') setClockOffset(f.payload.time - Date.now() / 1000);
+          // 一次性连接也顺手更新服务端能力位：先点歌后开聊天页时也能拿到正确的 UI 档位
+          setLocalServerName(String(f.payload?.srv ?? ''));
+          setCaps(f.payload?.caps);
           const ts = serverNowSec();
           const nonce = String(f.payload?.nonce ?? '');
           const { kid, sig } = tcpAuth(target.token, ts, nonce);

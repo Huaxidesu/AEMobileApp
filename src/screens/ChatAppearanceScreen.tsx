@@ -9,6 +9,7 @@ import type { ChatDensity, ChatTimeMode } from '../chatprefs';
 import { DayDivider, MessageGroup, SystemLine } from '../chatview';
 import type { ChatRow } from '../chatgroup';
 import { ColorField, GhostButton, Segmented } from '../components';
+import { hasCap } from '../serverinfo';
 
 type GroupRow = Extract<ChatRow, { type: 'group' }>;
 
@@ -83,6 +84,12 @@ export default function ChatAppearanceScreen() {
   /** 预览里点一下头像就能看到 classic 样式的展开效果 */
   const [expanded, setExpanded] = useState(false);
 
+  // 这台服实际能提供的标签能力（握手时服务端报的 caps）。
+  // 没有的能力连预览里都不摆 —— 否则设置页会示范一个线上永远不会出现的样子。
+  const canChat = hasCap('chat');
+  const canTeam = hasCap('team');
+  const canWorld = hasCap('world');
+
   const now = Date.now();
   const msg = (seq: number, kind: number, name: string, text: string, dt: number) => ({
     boot: 0,
@@ -98,9 +105,9 @@ export default function ChatAppearanceScreen() {
     name: 'Steve',
     kind: 0,
     mine: false,
-    team: '华溪岛',
-    teamColor: 'd',
-    world: '主世界',
+    team: canTeam ? '华溪岛' : undefined,
+    teamColor: canTeam ? 'd' : undefined,
+    world: canWorld ? '主世界' : undefined,
     msgs: [
       msg(1, 0, 'Steve', '§e晚上开荒§r，谁来？', -4 * 60000),
       msg(2, 0, 'Steve', '§b@我§r 缺个挖矿的', -3 * 60000),
@@ -112,8 +119,8 @@ export default function ChatAppearanceScreen() {
     name: '手机老王',
     kind: 1,
     mine: false,
-    srv: '天空树',
-    world: '下界',
+    srv: canChat ? '天空树' : undefined,
+    world: canWorld ? '下界' : undefined,
     msgs: [msg(3, 1, '手机老王', '我在外面，先用手机跟一句', -2 * 60000)],
   };
   const mineRow: GroupRow = {
@@ -164,21 +171,33 @@ export default function ChatAppearanceScreen() {
 
         <View>
           <Text style={styles.groupTitle}>标签颜色</Text>
-          <View style={styles.card}>
-            <ColorField
-              label="服务器"
-              hint="地球图标、文字和描边同色；本服和跨服都用这个颜色"
-              value={prefs.serverColor}
-              onChange={setServerColor}
-            />
-            <View style={styles.divider} />
-            <ColorField
-              label="世界"
-              hint="地图图标、文字和描边同色；默认绿色"
-              value={prefs.worldColor}
-              onChange={setWorldColor}
-            />
-          </View>
+          {canChat || canWorld ? (
+            <View style={styles.card}>
+              {canChat ? (
+                <ColorField
+                  label="服务器"
+                  hint="地球图标、文字和描边同色；本服和跨服都用这个颜色"
+                  value={prefs.serverColor}
+                  onChange={setServerColor}
+                />
+              ) : null}
+              {canChat && canWorld ? <View style={styles.divider} /> : null}
+              {canWorld ? (
+                <ColorField
+                  label="世界"
+                  hint="地图图标、文字和描边同色；默认绿色"
+                  value={prefs.worldColor}
+                  onChange={setWorldColor}
+                />
+              ) : null}
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.compatNote}>
+                当前服务器未安装 GTNHChat，队伍 / 服务器 / 世界标签不可用，这里没有可配的颜色。
+              </Text>
+            </View>
+          )}
           <Text style={styles.footnote}>
             队伍标签和玩家名跟着 ServerUtilities 里配的队伍颜色走，这里改不了；没队伍的玩家名字是白色。
           </Text>
@@ -324,6 +343,8 @@ const styles = themedStyles((colors) => ({
     paddingHorizontal: spacing.m,
   },
   footnote: { color: colors.textFaint, fontSize: 11, lineHeight: 16, marginTop: spacing.s, marginLeft: spacing.xs },
+  /** 服务端没这项能力时的说明（代替整块设置项，不留点了没反应的入口） */
+  compatNote: { color: colors.textDim, fontSize: 12, lineHeight: 18, paddingVertical: spacing.s, paddingHorizontal: spacing.m },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.l,
