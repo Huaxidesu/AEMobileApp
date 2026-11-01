@@ -18,6 +18,7 @@ import { DENSITY } from './chatprefs';
 import type { ChatPrefs } from './chatprefs';
 import type { ChatLike, ChatRow, SystemVariant } from './chatgroup';
 import { McText } from './mccolor';
+import { localServerName } from './serverinfo';
 import { useTheme, spacing, alpha } from './theme';
 
 export function timeLabel(ts: number): string {
@@ -254,6 +255,10 @@ export function MessageGroup({
   const isPlayer = row.kind === 0 || row.kind === 1;
   const pills = prefs.styleMode === 'pills';
   const canExpand = isPlayer && !!onToggleExpand && (!!row.srv || !!row.world);
+  // 本服消息的来源标签显示成灰色，只有跨服才用配置的服务器色。
+  // 不这么分的话，每条消息都挂一个橙色的「天空树」，标签常驻样式下就是纯噪音。
+  const srvIsRemote = !!row.srv && row.srv !== localServerName();
+  const srvColor = srvIsRemote ? prefs.serverColor : colors.textDim;
 
   const nameText = (
     <Text
@@ -303,7 +308,7 @@ export function MessageGroup({
                   />
                 ) : null}
                 {row.team ? <InfoTag kind="team" label={row.team} color={teamCol ?? colors.textDim} /> : null}
-                {row.srv ? <InfoTag kind="server" label={row.srv} color={prefs.serverColor} /> : null}
+                {row.srv ? <InfoTag kind="server" label={row.srv} color={srvColor} /> : null}
                 {row.world ? <InfoTag kind="world" label={row.world} color={prefs.worldColor} /> : null}
               </>
             ) : (
@@ -311,11 +316,11 @@ export function MessageGroup({
               <>
                 {isPlayer ? (
                   <ExpandArea open={expanded}>
-                    {row.srv ? <InfoTag kind="server" label={row.srv} color={prefs.serverColor} /> : null}
+                    {row.srv ? <InfoTag kind="server" label={row.srv} color={srvColor} /> : null}
                     {row.world ? <InfoTag kind="world" label={row.world} color={prefs.worldColor} /> : null}
                   </ExpandArea>
                 ) : row.srv ? (
-                  <InfoTag kind="server" label={row.srv} color={prefs.serverColor} />
+                  <InfoTag kind="server" label={row.srv} color={srvColor} />
                 ) : null}
                 {row.team ? <InfoTag kind="team" label={row.team} color={teamCol ?? colors.textDim} /> : null}
                 {nameText}

@@ -11,6 +11,7 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { FrameDecoder, PROTOCOL_VERSION, T, encodeFrame } from './protocol';
 import { serverNowSec, setClockOffset, tcpAuth } from '../auth';
+import { setLocalServerName } from '../serverinfo';
 
 export interface ConnTarget {
   ip: string;
@@ -255,6 +256,8 @@ class TcpClient {
         }
         this.nonce = String(payload?.nonce ?? '');
         this.serverVersion = String(payload?.ver ?? '');
+        // 本服显示名（群组服里叫「天空树」这种）；老服务端不给就是空串
+        setLocalServerName(String(payload?.srv ?? ''));
         this.sendAuth();
         break;
       }
