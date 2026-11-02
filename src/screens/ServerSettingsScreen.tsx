@@ -239,7 +239,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
     setAccounts(loadAccounts());
     setGuest(true);
     await reload();
-    showToast('已进入仅聊天模式', 'ok');
+    showToast('已进入仅聊天模式，可以收发公屏聊天', 'ok');
   }
 
   const currentLine = entryForHost(ip, port, lines);
@@ -279,7 +279,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
           <View style={{ marginBottom: spacing.l, gap: spacing.s }}>
             <GhostButton label="仅使用聊天功能（不用绑定码）" icon="chatbubbles-outline" onPress={enterGuest} />
             <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
-              只能看服务器公屏，不能发言，也没有物品 / 合成 / 监控。需要完整功能时再回来填绑定码即可。
+              能收发服务器公屏聊天，但没有物品 / 合成 / 监控。需要完整功能时再回来填绑定码即可。
             </Text>
           </View>
         ) : null}
@@ -291,7 +291,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
               <Text style={{ color: colors.warn, fontWeight: '700', fontSize: 13 }}>仅聊天模式</Text>
             </View>
             <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 4, lineHeight: 17 }}>
-              当前账号没有绑定码：只能看公屏。填上访问密码并选择主网后保存，即刻解锁物品、合成与监控。
+              当前账号没有绑定码：只能用公屏聊天。填上访问密码并选择主网后保存，即刻解锁物品、合成与监控。
             </Text>
           </View>
         ) : null}

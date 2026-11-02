@@ -31,6 +31,7 @@ import { DayDivider, MessageGroup, SystemLine } from '../chatview';
 import { SkinHead } from '../components/SkinHead';
 import { CommandSheet, MentionSheet, ModuleSheet } from '../components/ChatSheets';
 import { fetchPlayers, sendMusic } from '../api';
+import { canGuestSay } from '../serverinfo';
 import type { ServerConfig } from '../api';
 import {
   ALLMUSIC_NAME,
@@ -319,8 +320,10 @@ export default function ChatScreen({ navigation }: any) {
     ]);
   }, [clear]);
 
-  // 游客发不了言，不需要昵称门槛（昵称只是「我是谁」的本地标签）
-  if (!name && !guest) return <NameGate />;
+  // 只读游客（服务端 [chat] guestSay=false）发不了言，不需要昵称门槛；
+  // 能发言的游客和绑定用户一样要先起个昵称
+  const guestReadOnly = guest && !canGuestSay();
+  if (!name && !guestReadOnly) return <NameGate />;
 
   const online = status === 'online';
   const statusText = online ? '已连接' : status === 'connecting' ? '连接中' : status === 'error' ? error || '未连接' : '未连接';
@@ -338,6 +341,7 @@ export default function ChatScreen({ navigation }: any) {
             <View style={[styles.dot, { backgroundColor: online ? colors.ok : status === 'error' ? colors.bad : colors.warn }]} />
             <Text style={styles.subtitle} numberOfLines={1}>
               {statusText}
+              {guest ? ' · 仅聊天' : ''}
             </Text>
           </View>
         </View>
@@ -445,11 +449,11 @@ export default function ChatScreen({ navigation }: any) {
         </View>
       ) : null}
 
-      {guest ? (
+      {guestReadOnly ? (
         <View style={styles.guestBar}>
           <Ionicons name="eye-outline" size={14} color={colors.warn} />
           <Text style={styles.guestText} numberOfLines={1}>
-            仅聊天模式 · 只能看公屏
+            仅聊天模式 · 服务端未开放游客发言
           </Text>
           <Pressable onPress={() => navigation.navigate('ServerSettings')} hitSlop={8}>
             <Text style={[styles.guestText, { color: colors.accent, fontWeight: '700' }]}>绑定后发言</Text>

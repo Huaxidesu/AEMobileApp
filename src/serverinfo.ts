@@ -76,3 +76,17 @@ export function setGuestAllowed(value: unknown): void {
 export function canGuestChat(): boolean {
   return guestAllowed === true;
 }
+
+/**
+ * 游客能不能发言（`HELLO_ACK.guestsay`，服务端 `[chat] guestSay`）。
+ * 老服务端没这个字段 → 按「只读游客」处理，App 显示只读提示条而不是输入栏。
+ */
+let guestSayAllowed: boolean | null = null;
+
+export function setGuestSayAllowed(value: unknown): void {
+  guestSayAllowed = typeof value === 'boolean' ? value : null;
+}
+
+export function canGuestSay(): boolean {
+  return guestSayAllowed === true;
+}

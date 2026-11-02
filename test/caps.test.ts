@@ -6,12 +6,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canGuestChat,
+  canGuestSay,
   capsList,
   capsReported,
   hasCap,
   localServerName,
   setCaps,
   setGuestAllowed,
+  setGuestSayAllowed,
   setLocalServerName,
 } from '../src/serverinfo.ts';
 
@@ -78,4 +80,19 @@ test('服务端开了游客：true 才支持', () => {
   // 脏值一律当「没报」
   setGuestAllowed('yes');
   assert.equal(canGuestChat(), false);
+});
+
+// 游客发言（HELLO_ACK.guestsay）：不报 = 只读，只有明确 true 才给输入栏
+test('老服务端不报 guestsay：游客只读', () => {
+  setGuestSayAllowed(undefined);
+  assert.equal(canGuestSay(), false);
+});
+
+test('服务端明确开 guestsay：true 才能发言', () => {
+  setGuestSayAllowed(true);
+  assert.equal(canGuestSay(), true);
+  setGuestSayAllowed(false);
+  assert.equal(canGuestSay(), false);
+  setGuestSayAllowed('yes');
+  assert.equal(canGuestSay(), false);
 });

@@ -11,7 +11,7 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { FrameDecoder, PROTOCOL_VERSION, T, encodeFrame } from './protocol';
 import { serverNowSec, setClockOffset, tcpAuth } from '../auth';
-import { setCaps, setGuestAllowed, setLocalServerName } from '../serverinfo';
+import { setCaps, setGuestAllowed, setGuestSayAllowed, setLocalServerName } from '../serverinfo';
 
 export interface ConnTarget {
   ip: string;
@@ -274,6 +274,7 @@ class TcpClient {
         // 老服务端没有这个字段 → 记成「不知道」，UI 按原样显示
         setCaps(payload?.caps);
         setGuestAllowed(payload?.guest);
+        setGuestSayAllowed(payload?.guestsay);
         this.sendAuth();
         break;
       }
@@ -542,6 +543,7 @@ export async function requestOnce<T = any>(
           setLocalServerName(String(f.payload?.srv ?? ''));
           setCaps(f.payload?.caps);
           setGuestAllowed(f.payload?.guest);
+          setGuestSayAllowed(f.payload?.guestsay);
           if (target.guest) {
             socket.write(encodeFrame(T.AUTH, { guest: true }));
             break;

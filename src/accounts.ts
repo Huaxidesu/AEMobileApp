@@ -134,8 +134,9 @@ export function getActiveAccount(): ServerAccount {
 
 /** 当前账号对应的连接配置（其余屏幕只认这个） */
 export function loadActiveConfig(): ServerConfig {
-  const { scheme, ip, port, token, mainnet } = getActiveAccount();
-  return { scheme, ip, port, token, mainnet };
+  const { scheme, ip, port, token, mainnet, guest } = getActiveAccount();
+  // guest 必须带上：漏了它 isConfigComplete 会按「要 token」判，游客永远进不了主界面
+  return { scheme, ip, port, token, mainnet, guest };
 }
 
 /** 写入账号；不在索引里就补进去 */
