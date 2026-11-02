@@ -4,7 +4,16 @@
 // 新服务端明确报了空数组时才关掉 —— 三种情况各测一条。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { capsList, capsReported, hasCap, setCaps, setLocalServerName, localServerName } from '../src/serverinfo.ts';
+import {
+  canGuestChat,
+  capsList,
+  capsReported,
+  hasCap,
+  localServerName,
+  setCaps,
+  setGuestAllowed,
+  setLocalServerName,
+} from '../src/serverinfo.ts';
 
 test('老服务端没报 caps：按「有」处理，UI 保持原样', () => {
   setCaps(undefined);
@@ -50,4 +59,23 @@ test('本服显示名独立于能力位', () => {
   assert.equal(localServerName(), '天空树');
   setLocalServerName('');
   assert.equal(localServerName(), '');
+});
+
+// 游客只读聊天（HELLO_ACK.guest）：老服务端不报 = 不支持，只有明确 true 才给入口
+test('老服务端不报 guest：不支持游客', () => {
+  setGuestAllowed(undefined);
+  assert.equal(canGuestChat(), false);
+});
+
+test('服务端明确关掉游客：false 也不支持', () => {
+  setGuestAllowed(false);
+  assert.equal(canGuestChat(), false);
+});
+
+test('服务端开了游客：true 才支持', () => {
+  setGuestAllowed(true);
+  assert.equal(canGuestChat(), true);
+  // 脏值一律当「没报」
+  setGuestAllowed('yes');
+  assert.equal(canGuestChat(), false);
 });

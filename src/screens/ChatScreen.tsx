@@ -63,7 +63,7 @@ export default function ChatScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
   const { prefs } = useChatPrefs();
-  const { config } = useConfig();
+  const { config, guest } = useConfig();
   const { msgs, status, error, gap, name, send, setActive, clear, appendLocal } = useChat();
 
   const [draft, setDraft] = useState('');
@@ -319,7 +319,8 @@ export default function ChatScreen({ navigation }: any) {
     ]);
   }, [clear]);
 
-  if (!name) return <NameGate />;
+  // 游客发不了言，不需要昵称门槛（昵称只是「我是谁」的本地标签）
+  if (!name && !guest) return <NameGate />;
 
   const online = status === 'online';
   const statusText = online ? '已连接' : status === 'connecting' ? '连接中' : status === 'error' ? error || '未连接' : '未连接';
@@ -346,9 +347,12 @@ export default function ChatScreen({ navigation }: any) {
             {name}
           </Text>
         </Pressable>
-        <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Music')} hitSlop={8}>
-          <Ionicons name="musical-notes-outline" size={18} color={colors.accent} />
-        </Pressable>
+        {/* 点歌要走 REQ，游客没有权限，入口直接不显示 */}
+        {guest ? null : (
+          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Music')} hitSlop={8}>
+            <Ionicons name="musical-notes-outline" size={18} color={colors.accent} />
+          </Pressable>
+        )}
         <Pressable style={styles.iconBtn} onPress={onClear} hitSlop={8}>
           <Ionicons name="trash-outline" size={17} color={colors.textDim} />
         </Pressable>
@@ -441,6 +445,17 @@ export default function ChatScreen({ navigation }: any) {
         </View>
       ) : null}
 
+      {guest ? (
+        <View style={styles.guestBar}>
+          <Ionicons name="eye-outline" size={14} color={colors.warn} />
+          <Text style={styles.guestText} numberOfLines={1}>
+            仅聊天模式 · 只能看公屏
+          </Text>
+          <Pressable onPress={() => navigation.navigate('ServerSettings')} hitSlop={8}>
+            <Text style={[styles.guestText, { color: colors.accent, fontWeight: '700' }]}>绑定后发言</Text>
+          </Pressable>
+        </View>
+      ) : (
       <View style={styles.inputBar}>
         <Pressable
           style={styles.plusBtn}
@@ -487,6 +502,7 @@ export default function ChatScreen({ navigation }: any) {
           <Ionicons name="send" size={16} color={colors.bg} />
         </Pressable>
       </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -604,6 +620,17 @@ const styles = themedStyles((colors) => ({
     color: colors.text,
     fontSize: 14,
   },
+  guestBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.l,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  guestText: { color: colors.textDim, fontSize: 11, flexShrink: 1 },
   sendBtn: {
     width: 38,
     height: 38,

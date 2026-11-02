@@ -20,7 +20,7 @@ export default function SettingsScreen({ navigation }: any) {
   const { colors, mode } = useTheme();
   const { prefs, pageSize, setMode } = useGrid();
   const paged = prefs.mode === 'page';
-  const { config, complete, accountName } = useConfig();
+  const { config, complete, accountName, guest } = useConfig();
   const { name: chatName } = useChat();
   const { prefs: chatPrefs } = useChatPrefs();
   const insets = useSafeAreaInsets();
@@ -57,16 +57,29 @@ export default function SettingsScreen({ navigation }: any) {
         <Text style={styles.title}>设置</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
           <StatusDot ok={complete} />
-          <Text style={styles.subtitle}>{complete ? `${accountName} · ${baseUrl(config)}` : '未配置服务器'}</Text>
+          <Text style={styles.subtitle}>
+            {complete ? `${accountName} · ${baseUrl(config)}${guest ? ' · 仅聊天' : ''}` : '未配置服务器'}
+          </Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.l, paddingBottom: spacing.xxl }}>
-        <SettingsGroup title="连接" footnote="多账号：每个账号保存一套地址、密码与主网，切换即换服务器">
+        <SettingsGroup
+          title="连接"
+          footnote={
+            guest
+              ? '仅聊天模式：只能看公屏。填上访问密码并选择主网后保存，即刻解锁物品 / 合成 / 监控'
+              : '多账号：每个账号保存一套地址、密码与主网，切换即换服务器'
+          }
+        >
           <SettingsRow
-            icon="person-circle"
+            icon={guest ? 'eye-outline' : 'person-circle'}
             label="账号与主网"
-            detail={complete ? `${accountName}\n${baseUrl(config)} · ${mainnetText}` : '填写地址与密码后获取网络列表'}
+            detail={
+              complete
+                ? `${accountName}\n${baseUrl(config)} · ${guest ? '仅聊天（免绑定码）' : mainnetText}`
+                : '填写地址与密码后获取网络列表'
+            }
             onPress={() => navigation.navigate('ServerSettings')}
           />
           <SettingsRow

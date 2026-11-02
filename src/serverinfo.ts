@@ -58,3 +58,21 @@ export function hasCap(cap: Cap): boolean {
 export function capsList(): Cap[] {
   return caps ?? [];
 }
+
+// --------------------------------------------------------------- 游客只读聊天
+
+/**
+ * 本服开没开「游客只读聊天」（握手 `HELLO_ACK.guest`）。
+ *
+ * - `null` = 服务端没报（3.6.0 之前的 jar）→ 不支持，首次配置页不给那个入口；
+ * - `true` = 可以免绑定码进来看公屏，但只能看不能发。
+ */
+let guestAllowed: boolean | null = null;
+
+export function setGuestAllowed(value: unknown): void {
+  guestAllowed = typeof value === 'boolean' ? value : null;
+}
+
+export function canGuestChat(): boolean {
+  return guestAllowed === true;
+}

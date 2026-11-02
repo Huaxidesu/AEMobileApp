@@ -198,6 +198,7 @@ export function accountLabel(acc: ServerAccount): string {
 /** 副标题：地址 + 主网状态 */
 export function accountSummary(acc: ServerAccount): string {
   const addr = acc.ip ? `${acc.ip}:${acc.port}` : '未填地址';
+  if (acc.guest) return `${addr} · 仅聊天（免绑定码）`;
   if (!acc.mainnet) return `${addr} · 未选主网`;
   return `${addr} · DIM ${acc.mainnet.dimid}`;
 }

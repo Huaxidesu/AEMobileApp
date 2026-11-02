@@ -9,6 +9,8 @@ interface ConfigCtx {
   accountName: string;
   ready: boolean;
   complete: boolean;
+  /** 游客（仅聊天）模式：免绑定码，只能看公屏 */
+  guest: boolean;
   reload: () => Promise<void>;
 }
 
@@ -42,7 +44,11 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   }, [reload]);
 
   return (
-    <Ctx.Provider value={{ config, accountName, ready, complete: isConfigComplete(config), reload }}>{children}</Ctx.Provider>
+    <Ctx.Provider
+      value={{ config, accountName, ready, complete: isConfigComplete(config), guest: !!config.guest, reload }}
+    >
+      {children}
+    </Ctx.Provider>
   );
 }
 

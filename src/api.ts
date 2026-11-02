@@ -26,6 +26,11 @@ export interface ServerConfig {
    */
   token: string;
   mainnet: AENetwork | null;
+  /**
+   * 游客（仅聊天）模式：不填绑定码，服务端允许免签订阅 chat 流。
+   * 为 true 时 token / mainnet 可以为空，App 也不会发任何 REQ（物品、合成、TPS 全部没有）。
+   */
+  guest?: boolean;
 }
 
 export interface ApiResponse<T> {
@@ -38,6 +43,8 @@ export interface ApiResponse<T> {
 export const DEFAULT_PORT = '44444';
 
 export function isConfigComplete(cfg: ServerConfig): boolean {
+  // 游客只要一个地址：免绑定码，也没有 AE 功能可看（主网自然不需要）
+  if (cfg.guest) return !!cfg.ip;
   return !!(cfg.ip && cfg.token && cfg.mainnet && cfg.mainnet.x != null);
 }
 

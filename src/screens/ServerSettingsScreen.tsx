@@ -39,6 +39,8 @@ export default function ServerSettingsScreen({ navigation }: any) {
   const [port, setPort] = useState(DEFAULT_PORT);
   const [token, setToken] = useState('');
   const [mainnet, setMainnet] = useState<AENetwork | null>(null);
+  /** 当前账号是不是「游客（仅聊天）」：不填绑定码，只能看公屏 */
+  const [guest, setGuest] = useState(false);
 
   const [lines, setLines] = useState<ServerEntry[]>(() => mergeServers([]));
   const [lineOpen, setLineOpen] = useState(false);
@@ -58,6 +60,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
     setPort(acc.port);
     setToken(acc.token);
     setMainnet(acc.mainnet);
+    setGuest(!!acc.guest);
     setTested(null);
   }
 
@@ -70,7 +73,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
    */
   function formAccount(): ServerAccount {
     const prev = loadAccounts().find((a) => a.id === activeId);
-    return { ...(prev ?? ({} as ServerAccount)), id: activeId, name, scheme, ip, port, token, mainnet, updatedAt: Date.now() };
+    return { ...(prev ?? ({} as ServerAccount)), id: activeId, name, scheme, ip, port, token, mainnet, guest, updatedAt: Date.now() };
   }
 
   useEffect(() => {
@@ -210,13 +213,33 @@ export default function ServerSettingsScreen({ navigation }: any) {
       return;
     }
     setSaving(true);
-    const acc = upsertAccount(formAccount());
+    // 能走到这里说明密码和主网都填了 —— 顺带退出游客模式，解锁物品/合成/监控
+    const acc = upsertAccount({ ...formAccount(), guest: false });
     setActiveAccountId(acc.id);
     setAccounts(loadAccounts());
     await reload();
     setSaving(false);
     showToast('设置已保存', 'ok');
     if (navigation.canGoBack()) navigation.goBack();
+  }
+
+  /**
+   * 仅使用聊天功能：不填绑定码，只把地址存下来，进 App 只看公屏。
+   *
+   * 依赖服务端的「游客只读聊天」（`[chat] guest=true`）—— 没开的话连上就会被
+   * 回 `GUEST_DISABLED`，聊天页会显示那句人话提示，不会静默失败。
+   */
+  async function enterGuest() {
+    if (!ip) {
+      showToast('先填服务器地址，或从「线路」里选一条', 'bad');
+      return;
+    }
+    const acc = upsertAccount({ ...formAccount(), guest: true, token: '', mainnet: null });
+    setActiveAccountId(acc.id);
+    setAccounts(loadAccounts());
+    setGuest(true);
+    await reload();
+    showToast('已进入仅聊天模式', 'ok');
   }
 
   const currentLine = entryForHost(ip, port, lines);
@@ -246,6 +269,29 @@ export default function ServerSettingsScreen({ navigation }: any) {
             <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 14 }}>首次使用</Text>
             <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
               在游戏里的 ME 控制器旁放置「AE 监控器」，聊天栏会给出访问密码。选一条线路、填上密码，获取网络并选择主网即可。
+              {'\n'}不想要物品/合成功能、也懒得去找绑定码？填好线路和地址后，可以直接
+              <Text style={{ color: colors.accent, fontWeight: '600' }}> 仅使用聊天</Text>。
+            </Text>
+          </View>
+        ) : null}
+
+        {isSetup ? (
+          <View style={{ marginBottom: spacing.l, gap: spacing.s }}>
+            <GhostButton label="仅使用聊天功能（不用绑定码）" icon="chatbubbles-outline" onPress={enterGuest} />
+            <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
+              只能看服务器公屏，不能发言，也没有物品 / 合成 / 监控。需要完整功能时再回来填绑定码即可。
+            </Text>
+          </View>
+        ) : null}
+
+        {guest ? (
+          <View style={[card, { padding: spacing.m, marginBottom: spacing.l, borderColor: colors.warn }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="eye-outline" size={14} color={colors.warn} />
+              <Text style={{ color: colors.warn, fontWeight: '700', fontSize: 13 }}>仅聊天模式</Text>
+            </View>
+            <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 4, lineHeight: 17 }}>
+              当前账号没有绑定码：只能看公屏。填上访问密码并选择主网后保存，即刻解锁物品、合成与监控。
             </Text>
           </View>
         ) : null}
@@ -274,6 +320,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
                     {accountSummary(acc)}
                   </Text>
                 </View>
+                {acc.guest ? <Chip label="仅聊天" tone="warn" /> : null}
                 {active ? <Chip label="使用中" tone="accent" /> : null}
               </TouchableOpacity>
             );

@@ -82,8 +82,12 @@ function MainTabs() {
   const { colors } = useTheme();
   // 聊天订阅是常驻的（见 chat.tsx），所以这里能拿到「没在看聊天页时」的未读数
   const { unread } = useChat();
+  // 游客（仅聊天）：没有绑定码就没有 AE 网络可看，物品/合成/监控整块不挂，
+  // 省得摆三个点进去只会报错的 Tab
+  const { guest } = useConfig();
   return (
     <Tabs.Navigator
+      initialRouteName={guest ? 'Chat' : 'Items'}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
@@ -100,9 +104,9 @@ function MainTabs() {
         tabBarIcon: ({ color, size }) => <Ionicons name={TAB_ICONS[route.name] ?? 'ellipse'} size={size - 2} color={color} />,
       })}
     >
-      <Tabs.Screen name="Items" component={ItemsScreen} />
-      <Tabs.Screen name="Craft" component={CraftScreen} />
-      <Tabs.Screen name="Monitor" component={LazyMonitor} />
+      {guest ? null : <Tabs.Screen name="Items" component={ItemsScreen} />}
+      {guest ? null : <Tabs.Screen name="Craft" component={CraftScreen} />}
+      {guest ? null : <Tabs.Screen name="Monitor" component={LazyMonitor} />}
       <Tabs.Screen
         name="Chat"
         component={ChatScreen}

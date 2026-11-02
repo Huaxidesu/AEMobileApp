@@ -11,12 +11,24 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { FrameDecoder, PROTOCOL_VERSION, T, encodeFrame } from './protocol';
 import { serverNowSec, setClockOffset, tcpAuth } from '../auth';
-import { setCaps, setLocalServerName } from '../serverinfo';
+import { setCaps, setGuestAllowed, setLocalServerName } from '../serverinfo';
 
 export interface ConnTarget {
   ip: string;
   port: string;
   token: string;
+  /** 游客：AUTH 只声明 {guest:true}，不签名（服务端 [chat] guest=true 才认） */
+  guest?: boolean;
+}
+
+/** 鉴权失败的 code → 人话。游客的两个码要能区分「没开」和「满了」 */
+function describeAuthFail(code: string): string {
+  if (code === 'AUTH_FAILED') {
+    return '密码错误或已失效（如果刚重置过绑定码，请在游戏里执行 /aemobile token reset 获取新码）';
+  }
+  if (code === 'GUEST_DISABLED') return '这台服务器没开放游客聊天，请向服主要绑定码';
+  if (code === 'GUEST_FULL') return '游客名额满了，稍后再试，或向服主要绑定码';
+  return code;
 }
 
 export interface Result<T = any> {
@@ -261,6 +273,7 @@ class TcpClient {
         // 这台服能提供哪些可选能力（chat / team / world / relay）；
         // 老服务端没有这个字段 → 记成「不知道」，UI 按原样显示
         setCaps(payload?.caps);
+        setGuestAllowed(payload?.guest);
         this.sendAuth();
         break;
       }
@@ -286,11 +299,7 @@ class TcpClient {
           this.sendAuth();
           return;
         }
-        const err: any = new Error(
-          code === 'AUTH_FAILED'
-            ? '密码错误或已失效（如果刚重置过绑定码，请在游戏里执行 /aemobile token reset 获取新码）'
-            : code,
-        );
+        const err: any = new Error(describeAuthFail(code));
         err.code = code;
         err.xhrStatus = code === 'AUTH_FAILED' ? 401 : 0;
         const h = this.hello;
@@ -357,6 +366,11 @@ class TcpClient {
 
   private sendAuth(): void {
     if (!this.target) return;
+    // 游客没有密码，AUTH 只声明身份；服务端没开或满员会回 GUEST_DISABLED / GUEST_FULL
+    if (this.target.guest) {
+      this.send(T.AUTH, { guest: true });
+      return;
+    }
     const ts = serverNowSec();
     const { kid, sig } = tcpAuth(this.target.token, ts, this.nonce);
     this.send(T.AUTH, { kid, ts, sig });
@@ -527,6 +541,11 @@ export async function requestOnce<T = any>(
           // 一次性连接也顺手更新服务端能力位：先点歌后开聊天页时也能拿到正确的 UI 档位
           setLocalServerName(String(f.payload?.srv ?? ''));
           setCaps(f.payload?.caps);
+          setGuestAllowed(f.payload?.guest);
+          if (target.guest) {
+            socket.write(encodeFrame(T.AUTH, { guest: true }));
+            break;
+          }
           const ts = serverNowSec();
           const nonce = String(f.payload?.nonce ?? '');
           const { kid, sig } = tcpAuth(target.token, ts, nonce);
@@ -539,11 +558,7 @@ export async function requestOnce<T = any>(
           const code = String(f.payload?.code ?? 'AUTH_FAILED');
           // 鉴权失败时把签名要素打出来，方便和服务端 WARN 日志对照（不含 token 本体）
           console.log('[AEMobile][auth-fail] ' + JSON.stringify({ code, len: target.token.length, auth: authDebug }));
-          const err: any = new Error(
-            code === 'AUTH_FAILED'
-              ? '密码错误或已失效（如果刚重置过绑定码，请在游戏里执行 /aemobile token reset 获取新码）'
-              : code,
-          );
+          const err: any = new Error(describeAuthFail(code));
           err.code = code;
           err.xhrStatus = code === 'AUTH_FAILED' ? 401 : 0;
           done(() => reject(err));
