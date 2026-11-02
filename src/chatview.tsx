@@ -144,6 +144,19 @@ function looksLikeQuestMarker(text?: string): boolean {
   return !!text && text.indexOf('betterquesting.msg.sharequest:') >= 0;
 }
 
+/**
+ * 老消息兜底：正文里只有分享标记、没有结构化 `att` 字段的（3.4.1 之前落盘的），
+ * 现场拼一条任务附件出来，这样它和正常任务分享一样能点开在线任务书。
+ */
+function questAttFromText(text?: string): string | undefined {
+  if (!text) return undefined;
+  const marker = 'betterquesting.msg.sharequest:';
+  const at = text.indexOf(marker);
+  if (at < 0) return undefined;
+  const id = text.slice(at + marker.length).trim();
+  return id ? JSON.stringify([{ t: 'quest', i: id }]) : undefined;
+}
+
 /** 三种标签的图标：全部用 Ionicons 的线性（-outline）系列，画风一致、颜色随文字走 */
 const TAG_ICON = {
   team: 'people-outline',
@@ -349,6 +362,8 @@ export function MessageGroup({
           const first = i === 0;
           // 任务是 BQ 的分享标记时不显示正文（历史消息里还留着），改由 attHint 出「分享了任务」
           const bodyText = looksLikeQuestMarker(m.text) ? '' : m.text;
+          // 没有结构化附件的历史消息，从正文的标记里补一条任务附件
+          const att = m.att ?? questAttFromText(m.text);
           const bubbleRadius = Math.max(10, prefs.fontSize + 2);
           const tight = 5;
           return (
@@ -373,7 +388,7 @@ export function MessageGroup({
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', flexShrink: 1 }}>
-                  {bodyText || !m.att ? (
+                  {bodyText || !att ? (
                     <McText
                       text={bodyText}
                       selectable
@@ -397,7 +412,7 @@ export function MessageGroup({
                         flexShrink: 1,
                       }}
                     >
-                      {attHint(m.att)}
+                      {attHint(att)}
                     </Text>
                   )}
                   {prefs.timeMode === 'inside' ? (
@@ -405,7 +420,7 @@ export function MessageGroup({
                   ) : null}
                 </View>
                 {/* 物品链接 / 任务分享：正文里已经被摘掉，这里画成可展开的胶囊 */}
-                <AttachChips att={m.att} />
+                <AttachChips att={att} />
               </View>
             </View>
           );
