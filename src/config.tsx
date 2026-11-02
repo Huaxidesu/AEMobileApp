@@ -25,7 +25,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   const reload = useCallback(async () => {
-    // 读账号不能把整棵树卡住：出错就退到空配置（= 去连接表单），
+    // 读账号不能阻塞整棵树：出错就退到空配置（= 去连接表单），
     // 否则 ready 永远是 false，RootNavigator 只剩一个空 View，看起来就是「黑屏」。
     try {
       setConfig(loadActiveConfig());

@@ -1,13 +1,13 @@
 // 聊天输入框的「斜杠命令」与「@ 提及」数据表。
 //
 // 设计：输入框是唯一入口。
-//   - 打 `/`     → 弹模块列表（目前只有「点歌」）；
-//   - 打 `@`     → 弹候选（在线玩家 / AllMusic）；
+//   - 输入 `/`   → 弹模块列表（目前只有「点歌」）；
+//   - 输入 `@`   → 弹候选（在线玩家 / AllMusic）；
 //   - 选 AllMusic → 插入 `@allmusic ` 并弹命令面板；
 //   - 发送时 `@allmusic ...` 和 `/music ...` 都**不进公屏**，转成 music 请求
 //     走 AEMobileBridge（和音乐面板同一条链路）。
 //
-// 命令清单照抄服务器上 `/music help` 的输出（`[肥猫电台]` 前缀已去掉），
+// 命令清单复制自服务器上 `/music help` 的输出（`[肥猫电台]` 前缀已去掉），
 // 分「常用」和「更多」两组，避免一屏全是 hud 参数。
 import type { ServerConfig } from './api';
 
@@ -53,7 +53,7 @@ export const MUSIC_COMMANDS: MusicCmd[] = [
   { label: 'reload', cmd: 'reload', desc: '重读 AllMusic 配置', group: 'more' },
 ];
 
-/** `/` 弹出的模块列表。以后加新模块（比如查 TPS）往这里塞一行就行 */
+/** `/` 弹出的模块列表。以后新增模块（比如查 TPS）在此处添加一行即可 */
 export interface ChatModule {
   id: string;
   label: string;
@@ -161,7 +161,7 @@ export function mergeCandidates(mc: string[], app: string[], limit = 20): string
   return out;
 }
 
-/** 服务端没配好时也不该崩：`players` op 只是锦上添花 */
+/** 服务端未配置时也不应崩溃：`players` op 属于附加功能 */
 export function canAskPlayers(cfg: ServerConfig): boolean {
   return !!(cfg.ip && cfg.token);
 }

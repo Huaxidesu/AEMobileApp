@@ -465,7 +465,7 @@ export default function ChatScreen({ navigation }: any) {
           style={styles.plusBtn}
           hitSlop={8}
           onPress={() => {
-            // 面板开着的时候这个按钮是「关闭」，不能又弹回模块列表
+            // 面板处于打开状态时这个按钮是「关闭」，不应再弹回模块列表
             if (sheet) {
               setSheet(null);
               return;

@@ -1,11 +1,11 @@
 // 聊天正文里的结构化附件：物品链接、任务分享。
 //
 // 为什么不在正文里显示：物品的悬停提示是多行的，任务 ID 是一串十六进制，
-// 直接铺在气泡里会把整条消息撑爆。这里收成一行可点开的胶囊。
+// 直接平铺在气泡里会超出消息可读范围。这里收拢为一行可点开的胶囊。
 //
 // 物品：点一下展开悬停提示（多行文本，可选中）。
 // 任务：点一下弹操作面板 —— 去在线任务书（gtnhquestsbook.top）看这一条，
-//       或者把任务 ID / 链接复制走发给别人（游戏里、群里都行）。
+//       或者复制任务 ID / 链接分发（游戏内、群聊均可）。
 // 解析在 chatatt.ts（纯函数，有单测），链接拼接在 questbook.ts（同样纯函数、有单测）。
 import React, { useMemo, useState } from 'react';
 import { Clipboard, Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -24,7 +24,7 @@ export { parseAtt } from '../chatatt';
  * 任务附件的操作面板。
  *
  * 用 Modal 而不是聊天页那种内联面板：这里的入口在消息列表里，
- * 不存在「键盘被抢焦点」的问题（输入框本来就没焦点），Modal 反而省得把状态提上去。
+ * 不存在「键盘被抢占焦点」的问题（输入框本来就没焦点），Modal 反而避免把状态提升到上层。
  */
 function QuestSheet({ att, onClose }: { att: ChatAtt; onClose: () => void }) {
   const { colors } = useTheme();
@@ -43,7 +43,7 @@ function QuestSheet({ att, onClose }: { att: ChatAtt; onClose: () => void }) {
    * 复制成功后给个提示 —— 剪贴板没有系统反馈，不提示的话用户会以为没生效。
    *
    * `Clipboard` 是 react-native 核心的旧模块（0.74 还带着，新版会移除），
-   * 换来的是不加原生依赖、不用重跑 prebuild。
+   * 好处是不增加原生依赖、无需重新执行 prebuild。
    */
   const copy = (text: string, tip: string) => {
     Clipboard.setString(text);

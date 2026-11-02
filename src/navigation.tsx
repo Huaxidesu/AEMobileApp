@@ -83,7 +83,7 @@ function MainTabs() {
   // 聊天订阅是常驻的（见 chat.tsx），所以这里能拿到「没在看聊天页时」的未读数
   const { unread } = useChat();
   // 游客（仅聊天）：没有绑定码就没有 AE 网络可看，物品/合成/监控整块不挂，
-  // 省得摆三个点进去只会报错的 Tab
+  // 避免保留三个点击后只会报错的 Tab
   const { guest } = useConfig();
   return (
     <Tabs.Navigator

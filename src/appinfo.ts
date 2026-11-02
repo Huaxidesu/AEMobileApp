@@ -1,4 +1,4 @@
-// 应用元信息：原生版本号优先（Gradle 的 versionName），expoConfig 只在开发态兜底；
+// 应用元信息：原生版本号优先（Gradle 的 versionName），expoConfig 仅在开发态作为后备；
 // 仓库地址集中在此，换仓库只改这一处
 import Constants from 'expo-constants';
 

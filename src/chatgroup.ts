@@ -18,9 +18,9 @@ export interface ChatLike {
   att?: string;
   /** 玩家所在队伍名（ServerUtilities）；空表示没有队伍 */
   team?: string;
-  /** 队伍颜色码字符（MC 的 `d` / `b` …）；空表示没有队伍或老服务端 */
+  /** 队伍颜色码字符（MC 的 `d` / `b` …）；空表示没有队伍或旧服务端 */
   teamColor?: string;
-  /** 玩家所在世界的显示名；空表示不知道（服务器广播、App 消息、老服务端都没有） */
+  /** 玩家所在世界的显示名；空表示不知道（服务器广播、App 消息、旧服务端都没有） */
   world?: string;
 }
 
@@ -105,7 +105,7 @@ export function buildRows(
     // 点歌结果只在这台手机上（本地插入），和进出/成就一样走居中行
     const isMusicNote = m.kind === 7;
     const isSystem = isJoinLeave || isAchievement || isMusicNote;
-    // 关掉提示时直接跳过：既不留空日期头，也不打断同一人的 5 分钟合并
+    // 关闭提示时直接跳过：既不留空日期头，也不打断同一人的 5 分钟合并
     if (isJoinLeave && !showJoinLeave) continue;
     if (isAchievement && !showAchievements) continue;
 

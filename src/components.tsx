@@ -56,7 +56,7 @@ export function Segmented<T extends string>({
   value: T;
   onChange: (k: T) => void;
   /** 宽度之类的覆盖。**不要在它外面再套一个 View 控制宽度** —— 包裹层的高度可能是 0，
-   *  看着正常但点不动（监控页 2026-10-30 真机踩到）。 */
+   *  显示正常但点击无效（监控页 2026-10-30 真机实测发现）。 */
   style?: any;
 }) {
   return (

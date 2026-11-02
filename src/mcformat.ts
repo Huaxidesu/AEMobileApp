@@ -1,7 +1,7 @@
 // Minecraft 颜色 / 格式码的解析（纯函数，不依赖 React，可单测）。
 //
 // 服务端会把聊天原文里的 `§` 码原样带过来（`ChatFormat.sanitizeColored` 只放行
-// 0-9a-f 和 l/o/n/m/r，`§k` 已经被丢掉），所以这里要还原成真实样式。
+// 0-9a-f 和 l/o/n/m/r，`§k` 已被丢弃），所以这里要还原成真实样式。
 // 渲染在 mccolor.tsx，两边共用这里的解析结果。
 
 /** 0-9a-f 十六进制颜色（和游戏里一模一样） */
@@ -136,7 +136,7 @@ export function mentions(text: string, who: string): boolean {
   if (!who) return false;
   const plain = plainMc(text);
   if (!plain.toLowerCase().includes(`@${who}`.toLowerCase())) return false;
-  // 必须卡在词边界上：@Huaxidesu2 不算 @Huaxidesu
+  // 必须按词边界匹配：@Huaxidesu2 不算 @Huaxidesu
   const re = new RegExp(`@${who.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_\\u4e00-\\u9fa5])`, 'i');
   return re.test(plain);
 }

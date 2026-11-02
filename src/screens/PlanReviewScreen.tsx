@@ -19,7 +19,7 @@ import { showToast } from '../toast';
 interface Row {
   key: string;
   icon: string | null;
-  /** 流体行（没有物品图标，用滴水图标兜底） */
+  /** 流体行（没有物品图标，用滴水图标作后备） */
   isFluid: boolean;
   fluidColor?: number | null;
   aspectTint?: string | null;
@@ -299,7 +299,7 @@ export default function PlanReviewScreen({ route, navigation }: any) {
       {/* CPU 选择弹层 */}
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <View style={styles.mask}>
-          {/* 遮罩和面板必须平级：套在一起时，滑动列表会被当成「点遮罩」直接关掉弹层 */}
+          {/* 遮罩和面板必须平级：套在一起时，滑动列表会被当成「点遮罩」直接关闭弹层 */}
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setPickerOpen(false)} />
           <View style={styles.sheet}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs }}>

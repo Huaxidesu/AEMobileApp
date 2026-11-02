@@ -35,7 +35,7 @@ class ByteLru {
   get(key: string): string | undefined {
     const v = this.map.get(key);
     if (v === undefined) return undefined;
-    // Map 保持插入顺序：删了再塞回去 = 移到队尾（最近使用）
+    // Map 保持插入顺序：删除后重新写入 = 移到队尾（最近使用）
     this.map.delete(key);
     this.map.set(key, v);
     return v;
@@ -105,7 +105,7 @@ export function dbCacheStats() {
 
 /**
  * BLOB → base64。
- * 注意：expo-sqlite 有时直接把 BLOB 当 base64 字符串返回（老库是这么用的），
+ * 注意：expo-sqlite 有时直接把 BLOB 当 base64 字符串返回（旧库是这么用的），
  * 有时返回 Uint8Array（ATTACH 进来的库就是这样），两种都要认。
  */
 function toBase64(bytes: Uint8Array | string): string {
@@ -142,12 +142,12 @@ export const ESSENTIA = 'thaumicenergistics:essentia';
  */
 export const ASPECT_ITEM = 'aspectrecipeindex:aspect';
 
-/** 服务端塞在流体 NBT 里的颜色（0xRRGGBB），App 用它画纯色流体图标 */
+/** 服务端写入流体 NBT 的颜色（0xRRGGBB），App 用它画纯色流体图标 */
 export function readFluidColor(nbtobj: any): number | null {
   try {
     const c = nbtobj?.['comp>'];
     if (!c) return null;
-    // 不写死 int>/short>：不同 NBT 解析器的类型前缀可能不一样
+    // 不硬编码 int>/short>：不同 NBT 解析器的类型前缀可能不一样
     for (const k of Object.keys(c)) {
       if (k.endsWith('>Color')) {
         const v = c[k];
@@ -160,7 +160,7 @@ export function readFluidColor(nbtobj: any): number | null {
   }
 }
 
-/** 服务端在流体滴 NBT 里额外塞的显示名（没有容器映射时兜底用） */
+/** 服务端在流体滴 NBT 里额外写入的显示名（没有容器映射时作后备） */
 export function readFluidDisplayName(nbtobj: any): string | undefined {
   try {
     return nbtobj?.['comp>']?.['str>Name'];
@@ -193,7 +193,7 @@ export function prefetchNames(db: SQLiteDatabase, raws: { item_name: string; met
   if (missing.size === 0) return 0;
 
   const pairs = Array.from(missing.values());
-  // 400 对 = 800 个参数，卡在 SQLite 默认 999 上限之内
+  // 400 对 = 800 个参数，处于 SQLite 默认 999 上限之内
   const CHUNK = 400;
   let filled = 0;
   let ok = false;
@@ -205,7 +205,7 @@ export function prefetchNames(db: SQLiteDatabase, raws: { item_name: string; met
     // 一次查询把整块结果拼成一个字符串带回来。
     // 为什么不用「返回多行」：实测 45 次 getAllSync（每次 150 行 × 3 列）在模拟器上要 750ms，
     // 而 SQLite 本身只要 38ms —— 时间全花在 JSI 逐行转 JS 对象上。
-    // group_concat 把 6609 行压成 220KB 的单个字符串，一次传输完事。
+    // group_concat 把 6609 行合并为 220KB 的单个字符串，一次传输完成。
     // distinct 是因为图标库里存在重复的 (item_name, item_meta)（gendustry:GeneSample 有 1067 行）。
     try {
       const row = db.getFirstSync<{ s: string | null }>(
@@ -243,7 +243,7 @@ export function prefetchNames(db: SQLiteDatabase, raws: { item_name: string; met
         }
         ok = true;
       } catch {
-        // 库没打开/表不存在：交给单条查询兜底
+        // 库未打开/表不存在：由单条查询作后备处理
       }
     }
   }
@@ -299,7 +299,7 @@ export function lookupItemIcon(db: SQLiteDatabase, name: string, meta: number): 
     );
     if (row?.icon) icon = toBase64(row.icon);
   } catch {
-    // 同上：查不到就当没图标，别让列表崩掉
+    // 同上：查不到就视为无图标，避免列表崩溃
   }
   itemIconLru.set(key, icon ?? '');
   return icon;
@@ -316,7 +316,7 @@ export function lookupAspect(db: SQLiteDatabase, tag: string): { dname: string; 
       { $tag: key },
     );
   } catch {
-    // 老版本图标库没有 tint 列（图标一律是白模）
+    // 旧版本图标库没有 tint 列（图标一律是白模）
     try {
       row = db.getFirstSync<{ dname: string; icon: Uint8Array | null }>(
         'select dname, icon from essentia.aspect where tag = $tag limit 1',
@@ -330,7 +330,7 @@ export function lookupAspect(db: SQLiteDatabase, tag: string): { dname: string; 
     ? {
         dname: row.dname,
         icon: row.icon && row.icon.length ? toBase64(row.icon) : null,
-        // tint=0 表示建库时已经把颜色烘进 PNG 了，别再 tint 一遍（会变成双重变暗）
+        // tint=0 表示建库时已经把颜色烘进 PNG 了，不要再次 tint（会变成双重变暗）
         tint: (row.tint ?? 1) !== 0,
       }
     : null;
@@ -363,7 +363,7 @@ export function lookupFluidName(db: SQLiteDatabase, fluid: string): string | nul
  * 流体图标：fluids.db 的 fluid_icon 表。
  *
  * 图标是 mods 里 `textures/blocks/fluids/*.png` 抽出来的，按 16×16 缩放成 64px。
- * `tint=1` 表示建库时没拿到颜色（`/aemobile dumpcolors` 没跑过），图是灰度蒙版，
+ * `tint=1` 表示建库时没拿到颜色（`/aemobile dumpcolors` 未执行过），图是灰度蒙版，
  * 要用服务端 NBT 里的 Color 现染——和源质那套一样。
  */
 export function lookupFluidIcon(db: SQLiteDatabase, fluidName: string): { icon: string | null; tint: boolean } | null {
@@ -381,7 +381,7 @@ export function lookupFluidIcon(db: SQLiteDatabase, fluidName: string): { icon: 
       { $f: key },
     );
   } catch (e) {
-    // 老版本图标库里没有 fluid_icon 表：退回「纯色方块 + 水滴」
+    // 旧版本图标库里没有 fluid_icon 表：退回「纯色方块 + 水滴」
     console.warn('[AEMobile][fluid-icon-fail]', key, String(e));
   }
   if (!row || !row.icon || !row.icon.length) {
@@ -567,7 +567,7 @@ export function resolveItem(db: SQLiteDatabase, raw: { name: string; meta: numbe
     }
     const fallback = nbtobj?.['comp>']?.['str>Name'] as string | undefined;
     // 少数附属模组的要素没有贴图（custom1-5 / caelum / tabernus / terminus），
-    // 用 TC4 的 _unknown 图标兜底，别显示成「禁止」占位
+    // 用 TC4 的 _unknown 图标作后备，避免显示成「禁止」占位
     const unknownRef = lookupAspect(db, '_unknown');
     return new ResolvedItem(db, {
       name,

@@ -33,7 +33,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
 
   // 表单只服务于「当前编辑的账号」，切换账号时整体换掉
   const [name, setName] = useState('');
-  // 协议固定 TCP（2.x 的 HTTP/HTTPS 选项已取消），字段只为兼容老账号记录保留
+  // 协议固定 TCP（2.x 的 HTTP/HTTPS 选项已取消），字段只为兼容旧账号记录保留
   const [scheme] = useState('tcp');
   const [ip, setIp] = useState('');
   const [port, setPort] = useState(DEFAULT_PORT);
@@ -69,7 +69,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
    *
    * **必须先展开原账号**：这个对象会整份覆盖存储里的账号，只列表单字段的话，
    * 聊天昵称（`chatName`）这类不在表单里的字段会被抹掉 —— 表现是「改完密码，
-   * 进聊天页又要你起个名字」（2026-11-01 踩过）。
+   * 进聊天页又要求重新设置昵称」（2026-11-01 实际发生过）。
    */
   function formAccount(): ServerAccount {
     const prev = loadAccounts().find((a) => a.id === activeId);
@@ -100,7 +100,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
 
   function switchAccount(target: ServerAccount) {
     if (target.id === activeId) return;
-    // 切走前把当前表单落盘，避免改了密码没点保存就丢
+    // 切走前把当前表单落盘，避免修改密码未点保存即丢失
     upsertAccount(formAccount());
     setActiveAccountId(target.id);
     setActiveId(target.id);
@@ -146,7 +146,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
 
   async function openLinePicker() {
     setLineOpen(true);
-    // 打开时顺手用缓存里的在线列表刷新一次（在线源可能已更新）
+    // 打开时同时用缓存里的在线列表刷新一次（在线源可能已更新）
     const hit = await loadCachedServerList();
     if (hit) setLines(mergeServers(hit.entries));
   }
@@ -188,7 +188,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
       return;
     }
     setTesting(true);
-    // 只握手不鉴权，不需要密码；顺带对时（签名只接受 ±600s 偏差）
+    // 只握手不鉴权，不需要密码；同时完成对时（签名只接受 ±600s 偏差）
     const res = await testConnection(ip, port);
     setTesting(false);
     if (res.ok) {
@@ -213,7 +213,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
       return;
     }
     setSaving(true);
-    // 能走到这里说明密码和主网都填了 —— 顺带退出游客模式，解锁物品/合成/监控
+    // 能走到这里说明密码和主网都已填写 —— 同时退出游客模式，解锁物品/合成/监控
     const acc = upsertAccount({ ...formAccount(), guest: false });
     setActiveAccountId(acc.id);
     setAccounts(loadAccounts());

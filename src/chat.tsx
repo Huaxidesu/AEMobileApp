@@ -1,10 +1,10 @@
 // 聊天状态：全局常驻订阅 + 本地 7 天缓存。
 //
 // 生命周期挂在 AppShell 上（不是聊天页）：只要账号配好了就一直订阅，
-// 所以切到别的 Tab 也能收消息、底栏能显示未读角标。
+// 所以切到其他 Tab 也能收消息、底栏能显示未读角标。
 // 断线重连由 net/conn.ts 统一处理，重连后会用 stream.params 里的 since/boot 续传。
 //
-// 服务端**不存历史**：它只有 30 秒 / 128 条的投递缓冲，断线久了会丢（帧里带 gap）。
+// 服务端**不存历史**：它只有 30 秒 / 128 条的投递缓冲，断线过久会丢失（帧里带 gap）。
 // 历史在这边落盘，见 chatlog.ts。
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { isConfigComplete, openStream, sendChat } from './api';
@@ -30,7 +30,7 @@ interface ChatCtx {
   unread: number;
   status: ChatStatus;
   error: string;
-  /** 服务端重启/断线太久，中间丢了一段 */
+  /** 服务端重启/断线太久，中间丢失了一段 */
   gap: boolean;
   /** 自定义昵称；空字符串表示还没设置（首次进聊天页要强制填） */
   name: string;
@@ -134,7 +134,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const stream = openStream(config as ServerConfig, 'chat', {
       since: cursor.current.since,
       boot: cursor.current.boot,
-      // 新 App 才收玩家进出事件；老服务端会忽略这个参数
+      // 新 App 才收玩家进出事件；旧服务端会忽略这个参数
       events: true,
     });
 
@@ -151,7 +151,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       for (const row of f.m) {
         if (!Array.isArray(row) || row.length < 5) continue;
         // 6-10 位是 3.4.0 之后陆续加的扩展：来源服务器、结构化附件、队伍名、队伍颜色、世界名。
-        // 老服务端不发，读出来就是 undefined
+        // 旧服务端不发，读出来就是 undefined
         const [seq, kind, who, text, ts, srv, att, team, teamColor, world] = row;
         const item: ChatMessage = {
           scope,

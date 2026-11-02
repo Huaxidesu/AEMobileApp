@@ -37,7 +37,7 @@ function loadPrefs(): GridPrefs {
     return {
       columns: Number.isFinite(columns) ? clamp(columns, GRID_LIMITS.columns.min, GRID_LIMITS.columns.max) : DEFAULT_GRID.columns,
       rows: Number.isFinite(rows) ? clamp(rows, GRID_LIMITS.rows.min, GRID_LIMITS.rows.max) : DEFAULT_GRID.rows,
-      // 老版本的记录没有 mode，按新的默认值（无限下滑）处理
+      // 旧版本的记录没有 mode，按新的默认值（无限下滑）处理
       mode: p?.mode === 'page' ? 'page' : 'scroll',
     };
   } catch {

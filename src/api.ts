@@ -1,7 +1,7 @@
 // 服务端接口层：协议类型 + 请求封装。
 //
 // 2026-10-27 协议 3.0.0：传输从 HTTP + SSE 换成裸 TCP（阿里云按 Host 头拦 HTTP，
-// 裸 TCP 不受影响；顺带把 Spring/Tomcat 从 mod 里删掉了）。
+// 裸 TCP 不受影响；同时移除了 mod 里的 Spring/Tomcat）。
 // 屏幕层只认这里的 op 名字，帧格式仍然是「全量 + 增量 + 心跳」，见 frames.ts。
 //
 // 契约：AEMobile/doc/传输协议与安全.md
@@ -16,7 +16,7 @@ export interface AENetwork {
 }
 
 export interface ServerConfig {
-  /** 历史字段，协议 3.0.0 起恒为 'tcp'，只为兼容老账号记录保留 */
+  /** 历史字段，协议 3.0.0 起恒为 'tcp'，只为兼容旧账号记录保留 */
   scheme: string;
   ip: string;
   port: string;
@@ -90,7 +90,7 @@ export function openStream(
 }
 
 /**
- * 测试连接：只握手不鉴权（不需要密码），顺带对时。
+ * 测试连接：只握手不鉴权（不需要密码），同时完成对时。
  * 返回服务器版本和本机时钟偏差（秒）。
  */
 export async function testConnection(
@@ -234,10 +234,10 @@ export interface TpsFull {
  * - `srv`：来源服务器显示名。空串表示本服；群组服里从别的子服转发过来的消息才带值。
  * - `att`：结构化附件的 JSON 数组字符串（物品链接、任务分享），没有时是空串。
  * - `team`：玩家所在队伍名（ServerUtilities），没有时是空串。
- * - `teamColor`：队伍颜色码字符（MC 的 `d` / `b` …），没有队伍或老服务端时是空串。
+ * - `teamColor`：队伍颜色码字符（MC 的 `d` / `b` …），没有队伍或旧服务端时是空串。
  * - `world`：玩家所在世界的显示名（GTNHChat 已换成中文别名）。服务器广播和 App 消息没有，空串。
  *
- * 老服务端不发后面几位，老 App 也只读前五位，两边都能跑。
+ * 旧服务端不发后面几位，旧版本 App 也只读前五位，双方保持兼容。
  */
 export interface ChatFrame {
   t: 'c';

@@ -43,7 +43,7 @@ export class ItemAccumulator {
       const nbt = f.n ?? {};
       f.d.forEach((row: any[], i: number) => {
         const [name, meta, count, craftable] = row;
-        // 防御：服务端出 bug 时宁可少一条，也别让 null 流进 UI（会直接崩在 resolveItem）
+        // 防御：服务端出 bug 时宁可少一条，也避免 null 进入 UI（会在 resolveItem 处直接崩溃）
         if (typeof name !== 'string') return;
         const rowNbt = nbt[String(i)] ?? null;
         this.map.set(itemKey(name, meta, rowNbt), {

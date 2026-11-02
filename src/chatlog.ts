@@ -1,10 +1,10 @@
 // 聊天本地缓存（7 天）。服务端不存任何历史，这边是唯一的落盘副本。
 //
-// 为什么单独开一个库而不是塞进物品库：物品库是 189MB 的只读图标库（在线更新会整包替换），
-// 往里写东西会跟着换包一起丢。聊天是独立的 append-only 小库，几十万行也就几 MB。
+// 为什么单独建一个库而不写入物品库：物品库是 189MB 的只读图标库（在线更新会整包替换），
+// 向其中写入的数据会随换包一起丢失。聊天是独立的 append-only 小库，几十万行也就几 MB。
 //
 // 主键是 (scope, boot, seq)：boot 是服务端那次启动的时间戳，服务端重启后 seq 会归零，
-// 不带 boot 的话新一轮的 seq=1 会和上一轮的 seq=1 撞车。
+// 不带 boot 的话新一轮的 seq=1 会与上一轮的 seq=1 产生冲突。
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'aemobile-chat.db';
@@ -28,9 +28,9 @@ export interface StoredMsg {
   att?: string;
   /** 玩家所在队伍名（ServerUtilities）；空串表示没有队伍 */
   team?: string;
-  /** 队伍颜色码字符（MC 的 `d` / `b` …）；空串表示没有队伍或老服务端 */
+  /** 队伍颜色码字符（MC 的 `d` / `b` …）；空串表示没有队伍或旧服务端 */
   teamColor?: string;
-  /** 玩家所在世界的显示名；空串表示不知道（服务器广播、App 消息、老服务端都没有） */
+  /** 玩家所在世界的显示名；空串表示不知道（服务器广播、App 消息、旧服务端都没有） */
   world?: string;
 }
 
@@ -65,7 +65,7 @@ function open(): SQLite.SQLiteDatabase {
 }
 
 /**
- * 老库升级：`CREATE TABLE IF NOT EXISTS` 不会给已有的表补列。
+ * 旧库升级：`CREATE TABLE IF NOT EXISTS` 不会给已有的表补列。
  * 3.4.0 之前的库只有 7 列，这里按需补 `srv` / `att` / `team` / `team_color` / `world`，
  * 已有的行默认为空串。
  */
@@ -83,7 +83,7 @@ function migrate(d: SQLite.SQLiteDatabase): void {
   }
 }
 
-/** 清掉超过 7 天的；每 10 分钟最多跑一次，避免每条消息都全表扫 */
+/** 清理超过 7 天的数据；每 10 分钟最多执行一次，避免每条消息都触发全表扫描 */
 export function purgeExpired(now = Date.now()): void {
   if (now - purgeAt < 10 * 60 * 1000) return;
   purgeAt = now;

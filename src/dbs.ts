@@ -1,6 +1,6 @@
 // 辅助库（流体 / 源质）的装配
 //
-// 三个库都是「在线包 or 编译期内置」，没有随 APK 写死的默认库。
+// 三个库都是「在线包 or 编译期内置」，没有随 APK 硬编码的默认库。
 // 这里只负责：把 fluids.db / essentia.db 用 SQLite 的 ATTACH 挂到主连接上
 // （不额外开连接、不额外占内存），查询写成 `fluids.xxx` / `essentia.xxx`。
 import * as FileSystem from 'expo-file-system';
@@ -18,8 +18,8 @@ export async function attachAux(db: SQLiteDatabase): Promise<void> {
   // 每次都可能真的去读磁盘（实测「搜索取名字」428ms）。
   // 索引只有几 MB，给 8MB 页缓存就能常驻。
   //
-  // 注意：**不要**开 mmap_size。试过 64MB，实测 RSS 直接多出 70MB（Other mmap 全是脏页），
-  // 换来的收益还不如页缓存 + 覆盖索引，低端机上会更容易被 LMK 干掉。
+  // 注意：**不要**启用 mmap_size。试过 64MB，实测 RSS 直接多出 70MB（Other mmap 全是脏页），
+  // 换来的收益还不如页缓存 + 覆盖索引，低端机上会更容易被 LMK 终止。
   try {
     await db.execAsync('PRAGMA cache_size = -8000');
   } catch {
@@ -39,7 +39,7 @@ export async function attachAux(db: SQLiteDatabase): Promise<void> {
       }
       await db.execAsync(`ATTACH DATABASE '${path}' AS ${name}`);
     } catch (e) {
-      // 已经挂过，或文件坏了：查询会走兜底（图标空白、名字用服务端给的英文名）
+      // 已经挂过，或文件损坏：查询会走后备逻辑（图标空白、名字用服务端给的英文名）
       console.warn('[AEMobile][attach-fail]', name, path, String(e));
     }
   }
@@ -52,7 +52,7 @@ export async function attachAux(db: SQLiteDatabase): Promise<void> {
  * 每次都要读一整行（194MB 库里就是随机读盘），实测取 6000 个名字要 428ms。
  * 有了覆盖索引，这条查询只走索引页（约 3.4MB，能常驻页缓存），同一操作降到几十毫秒。
  *
- * 只跑一次：用「库文件名」做标记，换了图标库会重新建。
+ * 只执行一次：用「库文件名」做标记，更换图标库后会重新建。
  * 建索引本身在 194MB 库上约 1–2 秒，所以调用方要延后到启动完成之后再做。
  */
 export async function ensureNameIndex(db: SQLiteDatabase, dbName: string): Promise<void> {

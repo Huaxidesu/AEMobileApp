@@ -30,7 +30,7 @@ const SORT_LABELS: Record<SortKey, string> = { count: '数量', name: '名称', 
 
 /**
  * 排序用的 collator 只建一次：`localeCompare(..., 'zh')` 每次比较都要现建一个 collator，
- * 一万七千条排序约 24 万次比较，实测能吃掉几百毫秒。
+ * 一万七千条排序约 24 万次比较，实测会占用几百毫秒。
  */
 const collator = (() => {
   try {
@@ -217,7 +217,7 @@ export default function ItemsScreen({ navigation }: any) {
       count: r.count,
       craftable: r.craftable,
       // key 必须带上 nbt：流体滴共用 ae2fc:fluid_drop:0，不带 nbt 的话 771 条流体全是重复 key，
-      // FlatList 会把它们当成同一项（只渲染一条，甚至全部丢掉）
+      // FlatList 会把它们当成同一项（只渲染一条，甚至全部丢弃）
       key: itemKey(r.item_name, r.meta, r.nbt),
       mod: r.item_name.split(':')[0] ?? '',
     }));
@@ -278,7 +278,7 @@ export default function ItemsScreen({ navigation }: any) {
         activeOpacity={0.7}
         onPress={() =>
           navigation.navigate('ItemDetail', {
-            // 详情页只需要这几个字段，传个干净的普通对象过去（别把惰性 getter 一起带过去）
+            // 详情页只需要这几个字段，传个干净的普通对象过去（不要把惰性 getter 一起带过去）
             item: {
               // ⚠️ 流体行在 resolveItem 里已经被换成了「容器物品」（单元/桶）**只为了显示**。
               // 下单必须用原始的 ae2fc 流体滴：传容器物品过去，服务端会去算「硫酸单元」的配方，

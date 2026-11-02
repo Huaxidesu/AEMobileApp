@@ -12,7 +12,7 @@ export interface MusicEntry {
   title: string;
   artist: string;
   album: string;
-  /** 去掉 `[点我…]` 提示后的原文，找不到结构时兜底显示 */
+  /** 去掉 `[点我…]` 提示后的原文，找不到结构时作为后备显示 */
   raw: string;
 }
 

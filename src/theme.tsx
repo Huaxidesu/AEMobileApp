@@ -356,6 +356,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme(): ThemeCtx {
   const ctx = useContext(Ctx);
-  // 理论上 Provider 一定在，兜底成深色，免得单测/预览环境直接崩
+  // 理论上 Provider 一定存在，此处作为后备返回深色，避免单测/预览环境直接崩溃
   return ctx ?? { mode: 'dark', colors: currentPalette(), custom: DARK_CUSTOM, setMode: () => {}, setCustom: () => {}, usePreset: () => {} };
 }

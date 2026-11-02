@@ -56,7 +56,7 @@ export default function IconPackScreen() {
   }
 
   async function checkIcons() {
-    // 顺手保存输入框：改完地址直接点检查更新即可
+    // 同时保存输入框：改完地址直接点检查更新即可
     const url = applyUrl();
     if (!url) return;
     setChecking(true);

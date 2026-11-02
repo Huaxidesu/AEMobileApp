@@ -137,15 +137,15 @@ function attHint(att?: string): string {
 /**
  * 正文里混着 BetterQuesting 的分享标记（`betterquesting.msg.sharequest:<id>`）。
  *
- * 老服务端会把玩家的原始输入（就是那串标记）当正文发过来，手机上显示的是一串乱码。
- * 服务端已经改成正文留空了，这里兜住历史消息。
+ * 旧服务端会把玩家的原始输入（就是那串标记）当正文发过来，手机上显示的是一串乱码。
+ * 服务端已经改成正文留空了，这里兼容历史消息。
  */
 function looksLikeQuestMarker(text?: string): boolean {
   return !!text && text.indexOf('betterquesting.msg.sharequest:') >= 0;
 }
 
 /**
- * 老消息兜底：正文里只有分享标记、没有结构化 `att` 字段的（3.4.1 之前落盘的），
+ * 旧消息兼容：正文里只有分享标记、没有结构化 `att` 字段的（3.4.1 之前落盘的），
  * 现场拼一条任务附件出来，这样它和正常任务分享一样能点开在线任务书。
  */
 function questAttFromText(text?: string): string | undefined {

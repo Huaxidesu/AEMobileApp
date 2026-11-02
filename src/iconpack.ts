@@ -67,11 +67,11 @@ export interface RemoteManifest {
   items?: IconPackInfo;
   fluids?: IconPackInfo;
   essentia?: IconPackInfo;
-  /** 老清单（schema 1）里物品库叫 icons；现在当 items 的别名 */
+  /** 旧清单（schema 1）里物品库叫 icons；现在作为 items 的别名 */
   icons?: IconPackInfo;
 }
 
-/** 取某个库在清单里的条目（老清单只有 icons，当 items 用） */
+/** 取某个库在清单里的条目（旧清单只有 icons，作为 items 使用） */
 export function packInfo(manifest: RemoteManifest, kind: PackKind): IconPackInfo | null {
   const info = (manifest as any)[kind] as IconPackInfo | undefined;
   if (info?.sha256) return info;
@@ -174,7 +174,7 @@ export function getInstalledInfo(): InstalledInfo {
 
 // 切换即时生效：App.tsx 订阅这里，改完直接换 SQLiteProvider 的 key
 const dbListeners = new Set<() => void>();
-/** 装多个库时先别通知，等全部装完再通知一次 —— 否则装到一半就重挂 Provider，
+/** 装多个库时先不通知，等全部装完再通知一次 —— 否则装到一半就重挂 Provider，
  *  SQLiteProvider 会去开一个还在写文件的库，界面黑屏 */
 let notifySuppressed = 0;
 
@@ -223,7 +223,7 @@ export function restoreAllBuiltin(): void {
 
 /**
  * 启动时把内置包落到 SQLite 目录（编译时嵌入了才有），
- * 再确认当前生效的文件都还在，丢了的退回内置。
+ * 再确认当前生效的文件都存在，缺失的回退到内置。
  * 返回物品库文件名；null 表示这台机器上还没有任何物品库 → App 要进「首次配置」。
  */
 export async function resolveActiveDb(): Promise<string | null> {
@@ -245,7 +245,7 @@ export async function resolveActiveDb(): Promise<string | null> {
  * 把编译期内置的包复制到 SQLite 目录（幂等）。
  *
  * 2026-10-29 修：以前每次启动都无条件 `Asset.downloadAsync()` 一遍内置包 ——
- * 内置物品库 194MB，实测这一句吃掉 **895ms**（整个启动才 1s）。
+ * 内置物品库 194MB，实测这一句占用 **895ms**（整个启动才 1s）。
  * 现在两道短路：
  *   ① 当前用的是在线包 → 内置包根本不会被打开，直接跳过；
  *   ② 落地过的内置包 sha 记在 SecureStore 里，sha 没变且文件在 → 跳过。

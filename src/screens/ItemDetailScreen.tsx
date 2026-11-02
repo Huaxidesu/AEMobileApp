@@ -47,7 +47,7 @@ export default function ItemDetailScreen({ route, navigation }: any) {
     setResolvedCount(0);
     abandonedRef.current = false;
     try {
-      // 服务端分片跑模拟，每片回一条进度（body 是 "SIMULATING - resolved: N"）
+      // 服务端分片执行模拟，每片回一条进度（body 是 "SIMULATING - resolved: N"）
       const resp = await request<CraftPlan>(
         config,
         'plan',
@@ -66,7 +66,7 @@ export default function ItemDetailScreen({ route, navigation }: any) {
       if (abandonedRef.current) return;
       if (!resp.succeed) {
         // 3.0.0 起服务端 populatePlan 用 IAEStackList，流体配方不再抛 ClassCastException，
-        // 所以这里不再有「涉及流体 = 已知限制」的说法；只兜底别的类型错误，别把 Java 堆栈甩给玩家
+        // 所以这里不再有「涉及流体 = 已知限制」的说法；只对其他类型错误作后备处理，不把 Java 堆栈展示给玩家
         const rawMsg = resp.message ?? '生成合成计划失败';
         const msg = /cannot be cast to|ClassCastException/.test(rawMsg)
           ? '服务端计算这个配方时出错了（内部类型错误），请把这条反馈给服务器管理员'

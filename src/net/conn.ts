@@ -136,8 +136,8 @@ class TcpClient {
     if (this.ready && this.key === key) return Promise.resolve();
     if (this.key !== key) {
       // 换服务器/换密码：旧连接上的一切都作废。
-      // 注意也要把「在途连接」丢掉 —— 否则新目标会 await 到旧目标的握手 promise，
-      // 表现就是「测试连接成功，但获取网络列表失败」（2026-10-28 真机踩到）。
+      // 注意也要丢弃「在途连接」 —— 否则新目标会 await 到旧目标的握手 promise，
+      // 表现就是「测试连接成功，但获取网络列表失败」（2026-10-28 真机实测发现）。
       this.key = key;
       this.target = target;
       this.destroySocket();
@@ -262,16 +262,16 @@ class TcpClient {
   private handleFrame(type: number, payload: any): void {
     switch (type) {
       case T.HELLO_ACK: {
-        // 顺带对时：签名用的 ts 只允许 ±600s 偏差
+        // 同时完成对时：签名用的 ts 只允许 ±600s 偏差
         if (typeof payload?.time === 'number') {
           setClockOffset(payload.time - Date.now() / 1000);
         }
         this.nonce = String(payload?.nonce ?? '');
         this.serverVersion = String(payload?.ver ?? '');
-        // 本服显示名（群组服里叫「天空树」这种）；老服务端不给就是空串
+        // 本服显示名（群组服里叫「天空树」这种）；旧服务端不给就是空串
         setLocalServerName(String(payload?.srv ?? ''));
         // 这台服能提供哪些可选能力（chat / team / world / relay）；
-        // 老服务端没有这个字段 → 记成「不知道」，UI 按原样显示
+        // 旧服务端没有这个字段 → 记成「不知道」，UI 按原样显示
         setCaps(payload?.caps);
         setGuestAllowed(payload?.guest);
         setGuestSayAllowed(payload?.guestsay);
@@ -460,7 +460,7 @@ class TcpClient {
     const id = this.nextId++;
     const p: Pending = {
       resolve: (r) => {
-        // 服务端拒绝订阅（如老版本没有这个 op）会回一条 ok:false 的 RES，
+        // 服务端拒绝订阅（如旧版本没有这个 op）会回一条 ok:false 的 RES，
         // 这里必须报错，否则界面会显示「已连接」但永远收不到推送。
         if (r && r.ok === false) {
           stream.emit('error', { message: String(r.m ?? '订阅失败') });
@@ -483,12 +483,12 @@ class TcpClient {
 export const tcp = new TcpClient();
 
 /**
- * 一次性请求：**自己开一条短连接**（HELLO → AUTH → REQ → 关掉），不碰共享的长连接。
+ * 一次性请求：**自己开一条短连接**（HELLO → AUTH → REQ → 关闭），不使用共享的长连接。
  *
  * 为什么要这样：共享连接只服务「订阅流」，而设置页用的是**还没保存的表单配置**。
- * 如果一次性请求也走共享连接，它和屏幕里的订阅流会互相把对方的连接踢掉
+ * 如果一次性请求也走共享连接，它和屏幕里的订阅流会互相强制断开对方的连接
  * （一个要连 A 服、一个要连 B 服，每次 connect 都 destroy 对方），
- * 表现就是「测试连接成功、获取网络列表却失败」（2026-10-28 真机踩到）。
+ * 表现就是「测试连接成功、获取网络列表却失败」（2026-10-28 真机实测发现）。
  */
 export async function requestOnce<T = any>(
   target: ConnTarget,
@@ -539,7 +539,7 @@ export async function requestOnce<T = any>(
       for (const f of frames) {
         if (f.type === T.HELLO_ACK) {
           if (typeof f.payload?.time === 'number') setClockOffset(f.payload.time - Date.now() / 1000);
-          // 一次性连接也顺手更新服务端能力位：先点歌后开聊天页时也能拿到正确的 UI 档位
+          // 一次性连接也同时更新服务端能力位：先点歌后开聊天页时也能拿到正确的 UI 档位
           setLocalServerName(String(f.payload?.srv ?? ''));
           setCaps(f.payload?.caps);
           setGuestAllowed(f.payload?.guest);

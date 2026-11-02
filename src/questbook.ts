@@ -28,7 +28,7 @@ export function normQuestId(raw?: string | null): string {
   // 有人会把整句 `任务 <id> 看下` 连文字一起粘过来：只挑中间那段 base64
   const m = /[A-Za-z0-9_\-+/]{16,32}={0,2}/.exec(s);
   if (!m) return '';
-  // BQ 用 URL-safe 编码；别的来源可能给标准 base64，统一成 url-safe
+  // BQ 用 URL-safe 编码；其他来源可能给标准 base64，统一成 url-safe
   s = m[0].replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   if (!/^[A-Za-z0-9_-]{16,32}$/.test(s)) return '';
   // 16 字节 → 24 字符（22 位正文 + `==`）；只补不截，长度本来不是 22 的不动

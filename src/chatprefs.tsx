@@ -76,7 +76,7 @@ function normalize(p: Partial<ChatPrefs> | null | undefined): ChatPrefs {
   const timeMode: ChatTimeMode =
     p?.timeMode === 'above' || p?.timeMode === 'hidden' ? p.timeMode : 'inside';
   const styleMode: ChatStyle = p?.styleMode === 'pills' ? 'pills' : 'classic';
-  // 颜色只认 #RRGGBB；用户手输到一半（`#F9`）时别把整份配置写坏
+  // 颜色只认 #RRGGBB；用户输入到一半（`#F9`）时不要破坏整份配置
   const serverColor = typeof p?.serverColor === 'string' && isHexColor(p.serverColor)
     ? p.serverColor.toUpperCase()
     : DEFAULT_CHAT.serverColor;

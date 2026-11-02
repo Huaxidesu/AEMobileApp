@@ -72,7 +72,7 @@ export class FrameDecoder {
       // ⚠️ 必须用 Buffer.prototype.toString(encoding, start, end)。
       // 在 Hermes 里 `buf.subarray(a, b).toString('utf8')` 会退化成 Uint8Array 的
       // toString（返回 "123,34,118,..." 这种字节列表），JSON.parse 必然失败 →
-      // 帧内容全变 null（2026-10-28 真机踩到：nonce 为空导致鉴权签名永远不匹配）。
+      // 帧内容全变 null（2026-10-28 真机实测发现：nonce 为空导致鉴权签名永远不匹配）。
       const text = this.buf.toString('utf8', 6, 4 + len);
       let payload: any = null;
       if (text.length > 0) {

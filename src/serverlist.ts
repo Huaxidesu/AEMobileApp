@@ -76,7 +76,7 @@ export interface ServerListManifest {
   servers?: { name?: string; host?: string; port?: number | string; tag?: string }[];
 }
 
-/** 在线清单 → 线路条目；脏数据（缺 host）直接丢掉 */
+/** 在线清单 → 线路条目；脏数据（缺 host）直接丢弃 */
 export function toEntries(m: ServerListManifest): ServerEntry[] {
   const fallbackPort = String(m.defaultPort ?? DEFAULT_PORT);
   return (m.servers ?? [])
@@ -124,7 +124,7 @@ export async function fetchServerList(url = getServerListUrl()): Promise<ServerE
   }
 }
 
-/** 上次成功获取的在线列表（离线时用它兜底） */
+/** 上次成功获取的在线列表（离线时作为后备） */
 export async function loadCachedServerList(): Promise<{ entries: ServerEntry[]; at: number } | null> {
   const hit = await readCache<ServerListManifest>(CACHE_KEY);
   if (!hit) return null;

@@ -19,7 +19,7 @@ const LEGACY = {
 
 export interface ServerAccount extends ServerConfig {
   id: string;
-  /** 玩家备注名；留空时用线路名或地址兜底 */
+  /** 玩家备注名；留空时依次使用线路名或地址 */
   name: string;
   /**
    * 聊天用的自定义名称（发给游戏内显示为 `[AEMobile][名称]`）。

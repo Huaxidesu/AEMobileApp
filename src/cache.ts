@@ -66,7 +66,7 @@ function categoryOf(key: string): CacheCategory | 'other' {
 
 // ---- 读写 ----
 
-/** 缓存超过这个时间就当未命中：物品列表几百 KB 起步，留一周足够，再老的内容反而误导人 */
+/** 缓存超过这个时间就当未命中：物品列表几百 KB 起步，留一周足够，更早的内容反而误导人 */
 const CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 
 export async function readCache<T>(key: string): Promise<CacheEntry<T> | null> {
@@ -91,8 +91,8 @@ const pendingData = new Map<string, unknown>();
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
- * 真正落盘。序列化（几 MB 的 JSON.stringify）放到 setTimeout 里跑，
- * 避免卡住调用方的渲染帧 —— 以前是在 setRaw 之后同步 stringify，会掉帧。
+ * 真正落盘。序列化（几 MB 的 JSON.stringify）放到 setTimeout 中执行，
+ * 避免阻塞调用方的渲染帧 —— 以前是在 setRaw 之后同步 stringify，会掉帧。
  */
 function flush(key: string, data: unknown, at: number): Promise<void> {
   const prev = writeChains.get(key) ?? Promise.resolve();

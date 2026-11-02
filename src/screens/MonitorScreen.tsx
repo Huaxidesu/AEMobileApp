@@ -2,11 +2,11 @@
 //
 // 数据分两路（见 AEMobile/doc/传输协议与安全.md §4/§5）：
 //   1) 一次性请求 op "tps"：91 个维度的名字/人数/实体/区块 + 全服快照，约 7KB。**进页面拉一次**，
-//      每 60 秒刷新一次人数；点开新世界时也顺手拉一次。
+//      每 60 秒刷新一次人数；点开新世界时也同时拉取一次。
 //   2) 订阅 op "tps"（5 秒一帧）：只带「被检测维度」的 tick 数字，约 200B。
-// 之所以拆开：91 个维度每帧带全量清单 = 6KB/帧 = 4MB/小时，手机上纯浪费流量。
+// 之所以拆开：91 个维度每帧带全量清单 = 6KB/帧 = 4MB/小时，手机上属于无意义的流量消耗。
 //
-// 「点开才检测」= 订阅参数 dims 里只有主世界 + 用户点开过的世界；关掉页面立刻断流。
+// 「点开才检测」= 订阅参数 dims 里只有主世界 + 用户点开过的世界；关闭页面立刻断流。
 // 曲线历史只在客户端：内存最多 180 点（15 分钟 @5s），落盘一份供下次打开续看。
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -40,7 +40,7 @@ const META_REFRESH_MS = 60000;
 type Pt = { t: number; v: number; max: number };
 type Series = (Pt | null)[];
 
-/** 落盘的快照：关掉 App 再打开能看到上次的走势和世界列表，而不是空页面 */
+/** 落盘的快照：关闭 App 再打开能看到上次的走势和世界列表，而不是空页面 */
 interface MonitorSnapshot {
   srv: TpsSrv | null;
   srvSeries: Series;
@@ -176,7 +176,7 @@ export default function MonitorScreen() {
       setMeta(r.body.w);
       setMetaAt(r.body.ts);
       setSrv(r.body.srv);
-      // 顺手把这次带回来的 tick 数据塞进去，页面刚打开就有数（不用等第一帧）
+      // 同时把这次带回来的 tick 数据写入，页面刚打开即有数据（无需等第一帧）
       const seeded: Record<number, TpsWorldTick> = {};
       for (const w of r.body.w) {
         if (w.mspt == null) continue;
@@ -257,7 +257,7 @@ export default function MonitorScreen() {
       const onError = (ev: any) => {
         setConnected(false);
         const msg = String(ev?.message ?? '');
-        // 老版本 mod 会回 UNKNOWN_STREAM:tps
+        // 旧版本 mod 会回 UNKNOWN_STREAM:tps
         if (msg.includes('UNKNOWN_STREAM') || msg.includes('NOT_SUPPORTED')) setUnavailable(true);
       };
       s.addEventListener('message', onMessage);
@@ -336,7 +336,7 @@ export default function MonitorScreen() {
     return out;
   }, [srvSeries, worldSeries, viewDim, prefs.range, metric]);
 
-  // 卡片左右各有 margin + padding，图表宽度按屏幕实宽算，别写死
+  // 卡片左右各有 margin + padding，图表宽度按屏幕实宽计算，不要硬编码
   const chartWidth = Math.max(200, Math.min(Dimensions.get('window').width - spacing.l * 4 - 2, 560));
   /** 图表上方两个分段控件的宽度（各占一半，留出 gap） */
   const segWidth = (chartWidth - spacing.s) / 2;
@@ -406,7 +406,7 @@ export default function MonitorScreen() {
         </View>
 
         <View style={styles.chartBar}>
-          {/* ⚠️ 宽度直接给 Segmented（它有 style），别套 flex:1 的 View —— 包裹层高度会是 0，点不动 */}
+          {/* ⚠️ 宽度直接给 Segmented（它有 style），不要在外层套 flex:1 的 View —— 包裹层高度会是 0，点击无效 */}
           <Segmented
             style={{ width: segWidth }}
             options={[

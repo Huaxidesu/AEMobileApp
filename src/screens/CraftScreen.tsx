@@ -138,7 +138,7 @@ export default function CraftScreen() {
                   ) : (
                     <Text style={{ color: colors.textFaint, fontSize: 12 }}>空闲中</Text>
                   )}
-                  {/* 容量与并行度：下单时要靠这两个判断能不能装下 / 跑多快 */}
+                  {/* 容量与并行度：下单时要靠这两个判断能否容纳 / 运行速度 */}
                   <Text style={{ color: colors.textFaint, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
                     容量 {formatItemCount(cpu.storage)} · 并行 {cpu.parallelism}
                   </Text>
