@@ -12,6 +12,9 @@ import { BQQUEST_RAW, ZHDICT_RAW } from './zhdictdata';
 let table: Map<string, string> | null = null;
 let questTable: Map<string, string> | null = null;
 
+/** `§` 颜色码（含 `§r`）；服务端有些物品名带着它过来 */
+const CODES = /§[0-9a-fk-orA-FK-OR]/g;
+
 function parse(raw: string): Map<string, string> {
   const m = new Map<string, string>();
   let from = 0;
@@ -41,7 +44,13 @@ function ensureQuests(): Map<string, string> {
 /** 查一条英文名；没有对应条目返回 undefined */
 export function lookup(name?: string | null): string | undefined {
   if (!name) return undefined;
-  return ensure().get(name);
+  const table = ensure();
+  const hit = table.get(name);
+  if (hit !== undefined) return hit;
+  // 服务端发来的物品名可能带 `§` 颜色码（NEI 分享用的是带码的显示名），而字典的键是
+  // 剥过码的纯文本。不兜这一下，TST 那类名字带颜色的物品永远显示英文。
+  if (name.indexOf('§') < 0) return undefined;
+  return table.get(name.replace(CODES, '').trim());
 }
 
 /** 翻译一段文本；翻不了就原样返回（聊天里绝大多数文本走这条） */
