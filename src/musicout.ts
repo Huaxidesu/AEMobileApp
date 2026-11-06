@@ -49,9 +49,12 @@ export function looksLikeSearch(lines: string[]): boolean {
 export function friendly(code: string, lines: string[] = []): string {
   if (!code) return lines.length ? lines[lines.length - 1] : '音乐操作失败';
   if (code.startsWith('RATE_LIMITED')) return code.replace(/^RATE_LIMITED:?/, '') || '操作太频繁，请稍后再试';
+  if (code.startsWith('EXCEPTION:')) return '命令桥执行失败，请稍后再试';
   switch (code) {
     case 'MUSIC_NO_PLAYER':
       return '这个绑定码还没有记录玩家名。请先在游戏里上线一次，或重新放置监控器。';
+    case 'GUEST_READONLY':
+      return '服务端没有开放游客点歌，且命令桥不可用，请向服主确认配置。';
     case 'MUSIC_DISABLED':
       return '服务器没有开启音乐功能（config 的 [music] enabled=false）。';
     case 'MUSIC_UNAVAILABLE':

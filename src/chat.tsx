@@ -70,7 +70,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   /** 换服务器/换密码就是另一套聊天，缓存和游标都要重置 */
   const scope = useMemo(() => serverKey(config), [config.ip, config.port, config.token]);
-  const connKey = `${config.ip}|${config.port}|${config.token}`;
+  // 身份变化要重新订阅：游客与正式连接走不同的 AUTH，断线重连的目标也不同。
+  // scope 不加 guest，同一台服务器的聊天历史仍然共用一份
+  const connKey = `${config.ip}|${config.port}|${config.token}|${config.guest ? 'g' : 'u'}`;
 
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [unread, setUnread] = useState(0);
@@ -223,8 +225,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     async (text: string) => {
       const t = text.trim();
       if (!t) return;
-      if (!name.trim()) throw new Error('请先设置聊天昵称');
-      const res = await sendChat(config as ServerConfig, name.trim(), t);
+      // 游客没有昵称门槛：公屏发言用中性默认名，点歌不使用这里的名字（走服务器身份）
+      const who = name.trim() || (config.guest ? '游客' : '');
+      if (!who) throw new Error('请先设置聊天昵称');
+      const res = await sendChat(config as ServerConfig, who, t);
       if (!res.succeed) throw new Error(res.message || '发送失败');
     },
     [config, name],

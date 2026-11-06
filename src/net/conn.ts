@@ -132,7 +132,8 @@ class TcpClient {
   // ------------------------------------------------------------ 连接
 
   connect(target: ConnTarget): Promise<void> {
-    const key = `${target.ip}:${target.port}:${target.token}`;
+    // 身份也要进指纹：游客与正式连接的 AUTH 方式不同，同地址切换时必须重建连接
+    const key = `${target.ip}:${target.port}:${target.token}:${target.guest ? 'g' : 'u'}`;
     if (this.ready && this.key === key) return Promise.resolve();
     if (this.key !== key) {
       // 换服务器/换密码：旧连接上的一切都作废。

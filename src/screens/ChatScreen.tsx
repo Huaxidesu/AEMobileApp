@@ -292,6 +292,11 @@ export default function ChatScreen({ navigation }: any) {
       showToast('App 发不了游戏命令，用 @allmusic 点歌', 'bad');
       return;
     }
+    // 服务端没开游客发言时公屏消息会被拒；点歌命令仍可用，走服务器身份
+    if (out.kind === 'chat' && guest && !canGuestSay()) {
+      showToast('服务端未开放游客发言，点歌请用 @allmusic 或右上角音符', 'bad');
+      return;
+    }
     setBusy(true);
     try {
       if (out.kind === 'music') {
@@ -311,7 +316,7 @@ export default function ChatScreen({ navigation }: any) {
     } finally {
       setBusy(false);
     }
-  }, [draft, busy, cmdBusy, send, runMusic, pendingCmd]);
+  }, [draft, busy, cmdBusy, send, runMusic, pendingCmd, guest]);
 
   const onClear = useCallback(() => {
     Alert.alert('清空聊天记录', '只清这台手机上的本地记录，游戏里和其他设备不受影响。', [
@@ -320,10 +325,10 @@ export default function ChatScreen({ navigation }: any) {
     ]);
   }, [clear]);
 
-  // 只读游客（服务端 [chat] guestSay=false）发不了言，不需要昵称门槛；
-  // 能发言的游客和绑定用户一样要先起个昵称
+  // 只读游客（服务端 [chat] guestSay=false）发不了言，但仍要能进聊天页用输入栏点歌；
+  // 昵称只用于公屏发言，游客点歌走服务器身份，不设门槛
   const guestReadOnly = guest && !canGuestSay();
-  if (!name && !guestReadOnly) return <NameGate />;
+  if (!name && !guest) return <NameGate />;
 
   const online = status === 'online';
   const statusText = online ? '已连接' : status === 'connecting' ? '连接中' : status === 'error' ? error || '未连接' : '未连接';
@@ -346,17 +351,15 @@ export default function ChatScreen({ navigation }: any) {
           </View>
         </View>
         <Pressable style={styles.nameChip} onPress={() => navigation.navigate('ChatName')}>
-          <SkinHead name={name} size={18} kind={1} />
+          <SkinHead name={name || 'Guest'} size={18} kind={1} />
           <Text style={styles.nameText} numberOfLines={1}>
-            {name}
+            {name || (guest ? '游客' : '')}
           </Text>
         </Pressable>
-        {/* 点歌要走 REQ，游客没有权限，入口直接不显示 */}
-        {guest ? null : (
-          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Music')} hitSlop={8}>
-            <Ionicons name="musical-notes-outline" size={18} color={colors.accent} />
-          </Pressable>
-        )}
+        {/* 游客也能点歌：以服务器身份执行，不需要绑定码 */}
+        <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Music')} hitSlop={8}>
+          <Ionicons name="musical-notes-outline" size={18} color={colors.accent} />
+        </Pressable>
         <Pressable style={styles.iconBtn} onPress={onClear} hitSlop={8}>
           <Ionicons name="trash-outline" size={17} color={colors.textDim} />
         </Pressable>
@@ -453,13 +456,14 @@ export default function ChatScreen({ navigation }: any) {
         <View style={styles.guestBar}>
           <Ionicons name="eye-outline" size={14} color={colors.warn} />
           <Text style={styles.guestText} numberOfLines={1}>
-            仅聊天模式 · 服务端未开放游客发言
+            仅聊天模式 · 未开放发言，仍可用 @allmusic 点歌
           </Text>
           <Pressable onPress={() => navigation.navigate('ServerSettings')} hitSlop={8}>
             <Text style={[styles.guestText, { color: colors.accent, fontWeight: '700' }]}>绑定后发言</Text>
           </Pressable>
         </View>
-      ) : (
+      ) : null}
+
       <View style={styles.inputBar}>
         <Pressable
           style={styles.plusBtn}
@@ -506,7 +510,6 @@ export default function ChatScreen({ navigation }: any) {
           <Ionicons name="send" size={16} color={colors.bg} />
         </Pressable>
       </View>
-      )}
     </KeyboardAvoidingView>
   );
 }

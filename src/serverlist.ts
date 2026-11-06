@@ -11,6 +11,10 @@ export interface ServerEntry {
   name: string;
   /** 补充说明，如「IPv6 线」 */
   tag?: string;
+  /** 可选：BC 上通用命令桥的端口，游客点歌直连时使用（默认 44445） */
+  bridgePort?: string;
+  /** 可选：命令桥密钥，服主改过默认值时由清单下发 */
+  bridgeSecret?: string;
   source: 'builtin' | 'online';
 }
 
@@ -73,7 +77,14 @@ export interface ServerListManifest {
   updated?: string;
   note?: string;
   defaultPort?: number | string;
-  servers?: { name?: string; host?: string; port?: number | string; tag?: string }[];
+  servers?: {
+    name?: string;
+    host?: string;
+    port?: number | string;
+    tag?: string;
+    bridgePort?: number | string;
+    bridgeSecret?: string;
+  }[];
 }
 
 /** 在线清单 → 线路条目；脏数据（缺 host）直接丢弃 */
@@ -86,6 +97,8 @@ export function toEntries(m: ServerListManifest): ServerEntry[] {
       port: String(s.port ?? fallbackPort),
       name: (s.name ?? '').trim() || String(s.host),
       tag: s.tag?.trim() || undefined,
+      bridgePort: s.bridgePort == null ? undefined : String(s.bridgePort),
+      bridgeSecret: s.bridgeSecret?.trim() || undefined,
       source: 'online' as const,
     }));
 }

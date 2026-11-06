@@ -204,8 +204,18 @@ export default function ServerSettingsScreen({ navigation }: any) {
   }
 
   async function save() {
-    if (!ip || !token) {
-      showToast('服务器地址和密码不能为空', 'bad');
+    if (!ip) {
+      showToast('服务器地址不能为空', 'bad');
+      return;
+    }
+    // 游客账号换了在线线路后没填绑定码：「保存设置」等价于继续以游客身份连接新线路，
+    // 不能要求密码和主网，否则玩家选完线路无法保存
+    if (guest && !token) {
+      await enterGuest();
+      return;
+    }
+    if (!token) {
+      showToast('请填写访问密码', 'bad');
       return;
     }
     if (!mainnet) {
@@ -238,8 +248,13 @@ export default function ServerSettingsScreen({ navigation }: any) {
     setActiveAccountId(acc.id);
     setAccounts(loadAccounts());
     setGuest(true);
+    setToken('');
+    setMainnet(null);
     await reload();
-    showToast('已进入仅聊天模式，可以收发公屏聊天', 'ok');
+    showToast('已进入仅聊天模式，可看公屏并以服务器身份点歌', 'ok');
+    // 首次配置时整棵导航树会切到主界面；从设置里进来必须自己回聊天页，
+    // 否则玩家停留在表单上，看起来像「点了没反应」
+    if (navigation.canGoBack()) navigation.navigate('Main', { screen: 'Chat' });
   }
 
   const currentLine = entryForHost(ip, port, lines);
@@ -279,7 +294,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
           <View style={{ marginBottom: spacing.l, gap: spacing.s }}>
             <GhostButton label="仅使用聊天功能（不用绑定码）" icon="chatbubbles-outline" onPress={enterGuest} />
             <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
-              能收发服务器公屏聊天，但没有物品 / 合成 / 监控。需要完整功能时再回来填绑定码即可。
+              能收发服务器公屏聊天，也能以服务器身份点歌；没有物品 / 合成 / 监控。需要完整功能时再回来填绑定码即可。
             </Text>
           </View>
         ) : null}
@@ -291,7 +306,7 @@ export default function ServerSettingsScreen({ navigation }: any) {
               <Text style={{ color: colors.warn, fontWeight: '700', fontSize: 13 }}>仅聊天模式</Text>
             </View>
             <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 4, lineHeight: 17 }}>
-              当前账号没有绑定码：只能用公屏聊天。填上访问密码并选择主网后保存，即刻解锁物品、合成与监控。
+              当前账号没有绑定码：可看公屏聊天，并以服务器身份点歌（游戏里不显示点歌者）。填上访问密码并选择主网后保存，即刻解锁物品、合成与监控。
             </Text>
           </View>
         ) : null}
@@ -355,6 +370,20 @@ export default function ServerSettingsScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
+            {/* 从设置里进来时首次配置的顶部入口不在，选完在线线路后要能当场切游客 */}
+            {isSetup ? null : (
+              <View style={{ gap: spacing.s }}>
+                <GhostButton
+                  label={guest ? '以游客身份连接这条线路' : '仅使用聊天功能（不用绑定码）'}
+                  icon="chatbubbles-outline"
+                  onPress={enterGuest}
+                />
+                <Text style={{ color: colors.textFaint, fontSize: 11, lineHeight: 16 }}>
+                  游客不需要绑定码：可看公屏并以服务器身份点歌。填上访问密码并选择主网后保存，即可解锁物品、合成与监控。
+                </Text>
+              </View>
+            )}
+
             <View>
               <FieldLabel text="服务器地址（不带端口）" />
               <StyledInput value={ip} onChangeText={setIp} placeholder="例如 mc.dafeimao.net" autoCorrect={false} />
@@ -402,7 +431,12 @@ export default function ServerSettingsScreen({ navigation }: any) {
           </View>
         </SettingsGroup>
 
-        <PrimaryButton label={saving ? '保存中…' : '保存设置'} icon="checkmark" onPress={save} loading={saving} />
+        <PrimaryButton
+          label={saving ? '保存中…' : guest && !token ? '保存线路（仅聊天）' : '保存设置'}
+          icon="checkmark"
+          onPress={save}
+          loading={saving}
+        />
       </ScrollView>
 
       {/* 线路选择弹层 */}

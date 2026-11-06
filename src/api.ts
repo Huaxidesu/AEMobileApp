@@ -5,8 +5,10 @@
 // 屏幕层只认这里的 op 名字，帧格式仍然是「全量 + 增量 + 心跳」，见 frames.ts。
 //
 // 契约：AEMobile/doc/传输协议与安全.md
+import TcpSocket from 'react-native-tcp-socket';
 import { setClockOffset } from './auth';
 import { Stream, probeServer, requestOnce, tcp } from './net/conn';
+import { entryForHost, loadCachedServerList } from './serverlist';
 
 export interface AENetwork {
   dimid: number;
@@ -265,13 +267,100 @@ export async function sendChat(
 }
 
 /**
- * 音乐：转发给代理上的 AEMobileBridge，由它执行 /music 并私有返回结果。
- * 返回的 lines 已经去掉 AllMusic 前缀和 § 颜色码。
- */export interface MusicResult {
+ * 音乐：正式账号走后端 mod 的 music op，由它转发给代理上的 AEMobileBridge 执行 /music，
+ * 结果私有返回（已经去掉 AllMusic 前缀和 § 颜色码）。
+ *
+ * 游客连接没有绑定码，服务端对非 chatSend 的 REQ 一律回 GUEST_READONLY，music op 还要用
+ * 绑定码反查玩家名。为了不改动生产服的 mod，游客改由 App **直连命令桥**：以固定的虚拟
+ * 身份（不对应任何在线玩家，相当于在服务器后台终端敲命令）执行 music，公屏不显示点歌者。
+ * 桥端口与密钥默认取插件的出厂值，服主改过的话由在线线路清单下发（bridgePort / bridgeSecret）。
+ */
+export interface MusicResult {
   ok: boolean;
   lines: string[];
   online: boolean;
   message: string;
+}
+
+/** 虚拟身份：桥用它构造离线 CommandSender，游戏里看不到是谁点的歌 */
+export const GUEST_MUSIC_IDENTITY = 'Server';
+const DEFAULT_BRIDGE_PORT = 44445;
+const DEFAULT_BRIDGE_SECRET = 'aemobile-bridge';
+
+interface BridgeResult {
+  ok: boolean;
+  lines: string[];
+  online: boolean;
+  error: string;
+}
+
+/** 线路清单里可选的命令桥参数；没配就用插件默认值 */
+async function bridgeTarget(cfg: ServerConfig): Promise<{ port: number; secret: string }> {
+  let port = DEFAULT_BRIDGE_PORT;
+  let secret = DEFAULT_BRIDGE_SECRET;
+  try {
+    const hit = await loadCachedServerList();
+    const entry = hit ? entryForHost(cfg.ip, cfg.port, hit.entries) : null;
+    if (entry?.bridgePort) port = Number(entry.bridgePort) || port;
+    if (entry?.bridgeSecret) secret = entry.bridgeSecret;
+  } catch {
+    // 读缓存失败不应影响点歌，沿用默认值
+  }
+  return { port, secret };
+}
+
+/** 直连命令桥：TCP 一行 JSON 请求 / 一行 JSON 响应，与插件的 exec 协议一致 */
+function bridgeMusic(cfg: ServerConfig, command: string, captureMs: number): Promise<BridgeResult> {
+  return new Promise<BridgeResult>((resolve, reject) => {
+    let settled = false;
+    let buffer = '';
+    let socket: any;
+    let timer: any;
+    const done = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      try {
+        socket?.destroy();
+      } catch {
+        // 连接可能已经断开
+      }
+      fn();
+    };
+
+    bridgeTarget(cfg)
+      .then(({ port, secret }) => {
+        if (settled) return;
+        socket = TcpSocket.createConnection({ host: cfg.ip, port }, () => {
+          socket.write(
+            JSON.stringify({ op: 'exec', secret, player: GUEST_MUSIC_IDENTITY, command, captureMs }) + '\n',
+          );
+        });
+        timer = setTimeout(() => done(() => reject(new Error('BRIDGE_UNAVAILABLE'))), captureMs + 10000);
+        socket.on('data', (chunk: any) => {
+          buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+          const nl = buffer.indexOf('\n');
+          if (nl < 0) return;
+          const line = buffer.slice(0, nl).trim();
+          try {
+            const r = JSON.parse(line);
+            done(() =>
+              resolve({
+                ok: !!r.ok,
+                lines: Array.isArray(r.lines) ? r.lines.map((v: unknown) => String(v)) : [],
+                online: !!r.online,
+                error: String(r.error ?? ''),
+              }),
+            );
+          } catch {
+            done(() => reject(new Error('MUSIC_BAD_RESPONSE')));
+          }
+        });
+        socket.on('error', () => done(() => reject(new Error('BRIDGE_UNAVAILABLE'))));
+        socket.on('close', () => done(() => reject(new Error('BRIDGE_UNAVAILABLE'))));
+      })
+      .catch(() => done(() => reject(new Error('BRIDGE_UNAVAILABLE'))));
+  });
 }
 
 export async function sendMusic(
@@ -279,13 +368,36 @@ export async function sendMusic(
   cmd: string,
   args: string[] = [],
 ): Promise<MusicResult> {
-  const res = await tcp.request<{ lines?: string[]; online?: boolean }>(cfg, 'music', { cmd, args });
-  return {
-    ok: res.ok,
-    lines: Array.isArray(res.b?.lines) ? res.b!.lines : [],
-    online: !!res.b?.online,
-    message: res.m ?? '',
-  };
+  // 支持游客身份服务端会直接按游客连接采用服务器身份；旧服务端忽略 player 字段
+  const params: Record<string, any> = { cmd, args };
+  if (cfg.guest) params.player = GUEST_MUSIC_IDENTITY;
+  const res = await tcp.request<{ lines?: string[]; online?: boolean }>(cfg, 'music', params);
+  if (res.ok) {
+    return {
+      ok: true,
+      lines: Array.isArray(res.b?.lines) ? res.b!.lines : [],
+      online: !!res.b?.online,
+      message: '',
+    };
+  }
+
+  // 游客被服务端拒绝时，改用命令桥；正式账号的错误原样返回（密码失效、桥未启用等）
+  if (!cfg.guest || (res.m !== 'GUEST_READONLY' && res.m !== 'MUSIC_NO_PLAYER')) {
+    return { ok: false, lines: [], online: false, message: res.m ?? '' };
+  }
+  try {
+    const command = ['music', cmd, ...args].filter(Boolean).join(' ');
+    const r = await bridgeMusic(cfg, command, cmd === 'search' ? 3500 : 800);
+    let ok = r.ok;
+    let message = r.error;
+    if (ok && r.lines.some((l) => l.includes('没有播放的玩家'))) {
+      ok = false;
+      message = 'NO_MUSIC_SESSION';
+    }
+    return { ok, lines: r.lines, online: r.online, message: ok ? '' : message || 'MUSIC_BAD_RESPONSE' };
+  } catch (e: any) {
+    return { ok: false, lines: [], online: false, message: String(e?.message ?? 'BRIDGE_UNAVAILABLE') };
+  }
 }
 
 /**
