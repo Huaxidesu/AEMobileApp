@@ -24,8 +24,23 @@ export interface ServerEntry {
  */
 export const DEFAULT_SERVER_LIST_URL = process.env.EXPO_PUBLIC_SERVER_LIST_URL || '';
 
-/** 随 App 分发的默认线路：空。玩家自己加，或从配置包导入 */
-export const BUILTIN_SERVERS: ServerEntry[] = [];
+/**
+ * 随 App 分发的默认线路：公开版为空，玩家自己加或从配置包导入。
+ * 定制包（深空矩阵版）在构建时注入 EXPO_PUBLIC_DEFAULT_SERVER_*，
+ * 新装用户的首个账号直接指向这条线路，不必手填地址。
+ */
+const DEFAULT_LINE_HOST = process.env.EXPO_PUBLIC_DEFAULT_SERVER_HOST || '';
+export const BUILTIN_SERVERS: ServerEntry[] = DEFAULT_LINE_HOST
+  ? [
+      {
+        host: DEFAULT_LINE_HOST,
+        port: process.env.EXPO_PUBLIC_DEFAULT_SERVER_PORT || DEFAULT_PORT,
+        name: process.env.EXPO_PUBLIC_DEFAULT_SERVER_NAME || DEFAULT_LINE_HOST,
+        tag: process.env.EXPO_PUBLIC_DEFAULT_SERVER_TAG || undefined,
+        source: 'builtin' as const,
+      },
+    ]
+  : [];
 
 const KEY_URL = 'servers.list_url';
 const CACHE_KEY = 'servers:global';
